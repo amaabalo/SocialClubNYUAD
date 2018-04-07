@@ -6,9 +6,11 @@
 	```
 
 * Initialise the database's relations:
-
+	```
 	psql -f initialise.sql social_club_nyuad
+	```
 
 * Populate the database:
-	
+	```	
 	python populate.py social_club_nyuad <USER> <PASSWORD>
+	```
