@@ -3,6 +3,7 @@ import sys
 import random
 import time
 import datetime
+import string
 
 if (len(sys.argv) != 4):
 	print("Usage: python populate.py <DATABASE NAME> <USER> <PASSWORD>")
@@ -19,6 +20,7 @@ lname_file.close()
 adjective_file.close()
 noun_file.close()
 
+#conn = psycopg2.connect("dbname=" + sys.argv[1] +" host=127.0.0.1")
 conn = psycopg2.connect("dbname=" + sys.argv[1] + " user=" + sys.argv[2] + " password=" + sys.argv[3] + " host=127.0.0.1")
 cur = conn.cursor()
 
@@ -98,7 +100,43 @@ def insertGroups(n_groups, n_users):
 			except psycopg2.IntegrityError:
 				conn.rollback()
 			
+def insertMessages(n_users, n_groups, n_messages):
+	for i in range(n_messages):
+		user1, user2, gID = 'NULL', 'NULL', 'NULL'
+		msgID = str(i+1).zfill(20)
+		user1 = str(random.randint(1, n_users)).zfill(20)
 
+		to_user = random.randint(0, 2)
+		if(to_user):
+			#cannot send message to self
+			user2 = str(random.randint(1, n_users)).zfill(20)
+			while user1 == user2:
+				user2 = str(random.randint(1, n_users)).zfill(20)
+		else:
+			gID = str(random.randint(1, n_groups)).zfill(20)
+
+		message = ''
+		msg_len = random.randint(1, 200)
+		selection = string.ascii_letters + string.digits + string.punctuation+string.whitespace
+		for j in range(msg_len):
+			message = message + random.choice(selection)
+
+		ts = random.uniform(0,1)*time.time()
+		date = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+
+		if(gID == 'NULL'):
+			gID = None
+		else:
+			user2 = None
+
+		try: 
+			cur.execute('INSERT INTO messages VALUES (%s, %s, %s, %s, %s, %s)', (msgID, user1, user2, gID, message, date))
+			conn.commit()
+		except psycopg2.IntegrityError as e:
+			print(e)
+			conn.rollback()
+		
 insertUsers(100)
 insertFriendships(100, 300)
 insertGroups(25, 100)
+insertMessages(100, 25, 400)
