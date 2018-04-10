@@ -1,11 +1,11 @@
-DROP TABLE IF EXISTS messageReceipient;
-DROP TABLE IF EXISTS messages;
-DROP TABLE IF EXISTS pendingGroupMembers;
-DROP TABLE IF EXISTS groupMembership;
-DROP TABLE IF EXISTS groups;
-DROP TABLE IF EXISTS pendingFriends;
-DROP TABLE IF EXISTS friends;
-DROP TABLE IF EXISTS profile;
+DROP TABLE IF EXISTS messageRecipient cascade;
+DROP TABLE IF EXISTS messages cascade;
+DROP TABLE IF EXISTS pendingGroupMembers cascade;
+DROP TABLE IF EXISTS groupMembership cascade;
+DROP TABLE IF EXISTS groups cascade;
+DROP TABLE IF EXISTS pendingFriends cascade;
+DROP TABLE IF EXISTS friends cascade;
+DROP TABLE IF EXISTS profile cascade;
 
 CREATE TABLE profile (
 	userID varchar(20),
@@ -53,7 +53,7 @@ CREATE TABLE messages (
 	fromUserID varchar(20) NOT NULL,
 	toUserID varchar(20) DEFAULT NULL,
 	toGroupID varchar(20) DEFAULT NULL,
-	message varchar(20) NOT NULL,
+	message varchar(200) NOT NULL,
 	dateSent timestamp DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (msgID),
 	FOREIGN KEY (fromUserID) REFERENCES profile,
@@ -63,9 +63,10 @@ CREATE TABLE messages (
 	CHECK (dateSent <= CURRENT_TIMESTAMP)
 );
 
-CREATE TABLE messageReceipient (
+CREATE TABLE messageRecipient (
 	msgID varchar(20),
 	toUserID varchar(20) DEFAULT NULL,
+	PRIMARY KEY (msgID, toUserID),
 	FOREIGN KEY (msgID) REFERENCES messages,
 	FOREIGN KEY (toUserID) REFERENCES profile ON DELETE CASCADE
 );
@@ -77,10 +78,7 @@ CREATE TABLE groupMembership(
 	PRIMARY KEY (gID, userID),
 	FOREIGN KEY(gID) REFERENCES groups,
 	FOREIGN KEY (userID) REFERENCES profile ON DELETE CASCADE
-	/*CHECK ((SELECT count(userID) FROM groupMembership WHERE groupMembership.gID = gID) < (SELECT lmt FROM groups WHERE groups.gID = gID))
-		"cannot use subquery in check constraint"*/
 );
-
 
 /* ASK DELIS ABOUT PENDING USERS, GROUP LIMIT*/
 CREATE TABLE pendingGroupMembers(
@@ -90,6 +88,56 @@ CREATE TABLE pendingGroupMembers(
 	PRIMARY KEY (gID, userID),
 	FOREIGN KEY (gID) REFERENCES groups ON DELETE CASCADE,
 	FOREIGN KEY (userID) REFERENCES profile ON DELETE CASCADE
-	/*CHECK ((SELECT count(userID) FROM groupMembership WHERE groupMembership.gID = gID) < (SELECT lmt FROM groups WHERE groups.gID = gID))
-		"cannot use subquery in check constraint"*/
 );
+
+DROP FUNCTION IF EXISTS group_lmt();
+DROP TRIGGER IF EXISTS group_lmt ON groupMembership;
+DROP FUNCTION IF EXISTS pending_group_lmt();
+DROP TRIGGER IF EXISTS pending_group_lmt ON pendingGroupMembers;
+DROP FUNCTION IF EXISTS add_msg_recipients();
+DROP TRIGGER IF EXISTS add_msg_recipients ON messages;
+
+/*number of members in a group should be less than or equal to limit*/
+CREATE FUNCTION group_lmt() RETURNS trigger AS $group_lmt$
+	BEGIN
+		IF (SELECT count(userID) FROM groupMembership WHERE groupMembership.gID = NEW.gID) >= (SELECT lmt FROM groups WHERE groups.gID = NEW.gID) THEN
+			RAISE EXCEPTION 'group limit reached';
+		END IF;
+		RETURN NEW;
+	END;
+$group_lmt$ LANGUAGE plpgsql;
+
+CREATE TRIGGER group_lmt BEFORE INSERT OR UPDATE ON groupMembership
+	FOR EACH ROW EXECUTE PROCEDURE group_lmt();
+
+/*number of members in a group should be less than or equal to limit and member should not already be in group*/
+CREATE FUNCTION pending_group_lmt() RETURNS trigger AS $pending_group_lmt$
+	BEGIN
+		IF (SELECT count(userID) FROM groupMembership WHERE groupMembership.gID = NEW.gID) >= (SELECT lmt FROM groups WHERE groups.gID = NEW.gID) THEN
+			RAISE EXCEPTION 'group limit reached';
+		END IF;
+		IF (SELECT count(userID) FROM groupMembership WHERE gID = NEW.gID AND userID = NEW.userID) != 0 THEN
+			RAISE EXCEPTION 'member already in group';
+		END IF; 
+		RETURN NEW;
+	END;
+$pending_group_lmt$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pending_group_lmt BEFORE INSERT OR UPDATE ON pendingGroupMembers
+	FOR EACH ROW EXECUTE PROCEDURE pending_group_lmt();
+
+/*add message recipient when message is added*/
+CREATE FUNCTION add_msg_recipients() RETURNS trigger AS $add_msg_recipients$
+	BEGIN
+		IF NEW.toUserID IS NOT NULL THEN
+			INSERT INTO messageRecipient VALUES (NEW.msgID, NEW.toUserID);
+		END IF;
+		IF NEW.toGroupID IS NOT NULL THEN
+			INSERT INTO messageRecipient(msgID, toUserID) SELECT NEW.msgID, groupMembership.userID FROM groupMembership WHERE groupMembership.gID = NEW.toGroupID;
+		END IF; 
+		RETURN NEW;
+	END;
+$add_msg_recipients$ LANGUAGE plpgsql;
+
+CREATE TRIGGER add_msg_recipients AFTER INSERT ON messages
+	FOR EACH ROW EXECUTE PROCEDURE add_msg_recipients();
