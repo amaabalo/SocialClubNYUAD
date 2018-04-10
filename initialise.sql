@@ -96,6 +96,10 @@ DROP FUNCTION IF EXISTS pending_group_lmt();
 DROP TRIGGER IF EXISTS pending_group_lmt ON pendingGroupMembers;
 DROP FUNCTION IF EXISTS add_msg_recipients();
 DROP TRIGGER IF EXISTS add_msg_recipients ON messages;
+DROP FUNCTION IF EXISTS pending_friend();
+DROP TRIGGER IF EXISTS pending_friend ON pendingFriends;
+DROP FUNCTION IF EXISTS reverse_friend();
+DROP TRIGGER IF EXISTS reverse_friend ON friends;
 
 /*number of members in a group should be less than or equal to limit*/
 CREATE FUNCTION group_lmt() RETURNS trigger AS $group_lmt$
@@ -141,3 +145,35 @@ $add_msg_recipients$ LANGUAGE plpgsql;
 
 CREATE TRIGGER add_msg_recipients AFTER INSERT ON messages
 	FOR EACH ROW EXECUTE PROCEDURE add_msg_recipients();
+
+/*pending friend should not be added if already friends*/
+CREATE FUNCTION pending_friend() RETURNS trigger AS $pending_friend$
+	BEGIN
+		IF (SELECT count(userID1) FROM friends WHERE userID1 = NEW.userID1 AND userID2 = NEW.userID2) != 0 THEN
+			RAISE EXCEPTION 'already friends';
+		END IF;
+		IF (SELECT count(userID1) FROM friends WHERE userID1 = NEW.userID2 AND userID2 = NEW.userID1) != 0 THEN
+			RAISE EXCEPTION 'reverse are already friends';
+		END IF;
+		IF (SELECT count(userID1) FROM pendingFriends WHERE userID2 = NEW.userID1 AND userID1 = NEW.userID2) != 0 THEN
+			RAISE EXCEPTION 'reverse are already pending';
+		END IF;
+		RETURN NEW;
+	END;
+$pending_friend$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pending_friend BEFORE INSERT ON pendingFriends
+	FOR EACH ROW EXECUTE PROCEDURE pending_friend();
+
+/*friends should not be added if reverse are already friends*/
+CREATE FUNCTION reverse_friend() RETURNS trigger AS $reverse_friend$
+	BEGIN
+		IF (SELECT count(userID1) FROM friends WHERE userID2 = NEW.userID1 AND userID1 = NEW.userID2) != 0 THEN
+			RAISE EXCEPTION 'reverse already friends';
+		END IF;
+		RETURN NEW;
+	END;
+$reverse_friend$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reverse_friend BEFORE INSERT ON friends
+	FOR EACH ROW EXECUTE PROCEDURE reverse_friend();
