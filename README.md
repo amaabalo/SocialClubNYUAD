@@ -14,3 +14,7 @@
 	```	
 	python populate.py social_club_nyuad <USER> <PASSWORD>
 	```
+* Test the TUI:
+	```
+	python App.py <DATABASE> <USER> <PASSWORD>
+	```
