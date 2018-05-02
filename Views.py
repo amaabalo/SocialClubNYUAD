@@ -500,9 +500,13 @@ class LogInForm(Form):
         super(LogInForm, self).__init__("Log In", ["Username", "Password"], "Log In", hidden_fields = [1])
 
     def validate(self):
-        isValid = True
         for i,field in enumerate(self.fields):
             if self.responses[i] == '':
                 self.add_error("'" + field + "' cannot be empty.")
-                isValid = False
-        return isValid
+                return False
+
+        db_helper = DatabaseHelper.get_instance()
+        if not db_helper.check_username_exists(self.responses[0]):
+            self.add_error("Username does not exist.")
+            return False;
+        return True
