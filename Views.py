@@ -146,7 +146,7 @@ class Form(object):
     # fields = List of strings denoting each fields
     # submit = String to be displayed for submit button
     # multiline_fields = List of indices of fields which will be multilined, all others will be single lined
-    def __init__(self, name, fields, submit, multiline_fields = None):
+    def __init__(self, name, fields, submit, multiline_fields = None, hidden_fields = None):
         self.name = name
         self.fields = fields
         self.current_selection = 0
@@ -157,9 +157,11 @@ class Form(object):
         self.submitted = False
         self.error_messages = []
         self.multiline_fields = multiline_fields
+        self.hidden_fields = hidden_fields
         self.num_rows_printed = 0
         self.cursor = u'\u258d'
         self.pointer = u'\u25b8'
+        self.hidden_char = u'\u25cf'
 
 
     def print_with_indent(self, indentation, text):
@@ -275,6 +277,11 @@ class Form(object):
         print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
         return 1
 
+    def is_hidden_field(self, index):
+        if self.hidden_fields == None:
+            return False
+        return index in self.hidden_fields
+
     def is_multiline_field(self, index):
         if self.multiline_fields == None:
             return False
@@ -294,10 +301,13 @@ class Form(object):
     def display_all_fields(self, columns):
         n_rows_printed = 0
         for i, option in enumerate(self.fields):
+            text = self.responses[i]
+            if self.is_hidden_field(i):
+                text = self.hidden_char * len(text)
             if self.is_multiline_field(i):
-                n_rows_printed += self.display_multiline_field(columns, option, self.responses[i], i == self.current_selection)
+                n_rows_printed += self.display_multiline_field(columns, option, text, i == self.current_selection)
             else:
-                n_rows_printed += self.display_single_line_field(columns, option, self.responses[i], i == self.current_selection)
+                n_rows_printed += self.display_single_line_field(columns, option, text, i == self.current_selection)
         return n_rows_printed
 
 
@@ -404,7 +414,7 @@ class Form(object):
             return False
         return True
 
-    # validate nullability and maximum character length
+    # validate nullability, maximum character length, and date formatting
     # attribute_field_map = {"userid": 0, "dob": 4}, for example
     def validate_against_schema(self, table_name, attribute_field_map):
         db_helper = DatabaseHelper.get_instance()
@@ -455,7 +465,8 @@ class SignUpForm(Form):
                                          "Email",\
                                          "Password",\
                                          "Date of Birth (YYYY-MM-DD)"],\
-                                         "Join the Club!")
+                                         "Join the Club!",\
+                                         hidden_fields = [4])
         self.attribute_field_map = {"userid": 0,
                                     "fname": 1,
                                     "lname": 2,
@@ -483,7 +494,7 @@ class SignUpForm(Form):
 # [Username, Password]
 class LogInForm(Form):
     def __init__(self):
-        super(LogInForm, self).__init__("Log In", ["Username", "Password"], "Log In")
+        super(LogInForm, self).__init__("Log In", ["Username", "Password"], "Log In", hidden_fields = [1])
 
     def validate(self):
         isValid = True
