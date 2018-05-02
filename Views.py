@@ -454,7 +454,7 @@ class Form(object):
     def validate(self):
         raise NotImplementedError('')
 
-# getResponses will return a list of strings
+# get_responses will return a list of strings
 # [Username, First Name, Last Name, Email, Password]
 class SignUpForm(Form):
     def __init__(self):
@@ -464,21 +464,22 @@ class SignUpForm(Form):
                                          "Last Name",\
                                          "Email",\
                                          "Password",\
+                                         "Confirm password",\
                                          "Date of Birth (YYYY-MM-DD)"],\
                                          "Join the Club!",\
-                                         hidden_fields = [4])
+                                         hidden_fields = [4, 5])
         self.attribute_field_map = {"userid": 0,
                                     "fname": 1,
                                     "lname": 2,
                                     "email": 3,
                                     "password": 4,
-                                    "dob": 5}
+                                    "dob": 6}
         self.associated_table = "profile"
 
 
     def validate(self):
         if not (self.validate_against_schema(self.associated_table, self.attribute_field_map) and self.validate_email(3)):
-               return False
+            return False
         db_helper = DatabaseHelper.get_instance()
         if db_helper.check_username_exists(self.responses[0]):
             self.add_error("Username already exists.")
@@ -486,8 +487,10 @@ class SignUpForm(Form):
         if db_helper.check_email_exists(self.responses[3]):
             self.add_error("Email already exists.")
             return False;
+        if not self.responses[4] == self.responses[5]:
+            self.add_error("Passwords do not match.")
+            return False
         return True
-
 
 
 # getResponses will return a list of strings
