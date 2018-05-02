@@ -2,6 +2,7 @@ import os
 import IO
 import Views
 import sys
+from UserContext import DatabaseHelper
 
 
 
@@ -14,3 +15,5 @@ if __name__=='__main__':
         sys.exit(0)
     m = Views.WelcomeMenu()
     m.start()
+    DBHelper = DatabaseHelper.get_instance()
+    print(DBHelper.get_date_attributes("profile"))

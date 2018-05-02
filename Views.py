@@ -3,8 +3,10 @@ import IO
 import string
 import sys
 from abc import ABCMeta, abstractmethod
-from UserContext import User, Status
+from UserContext import User, Status, DatabaseHelper
 import time, threading
+from datetime import datetime, date
+import re
 
 # Abstract Class
 class Menu(object):
@@ -75,6 +77,7 @@ class Menu(object):
                 break;
 
     def process_selection_(self):
+        error_messages = []
         if self.dismissable and self.current_option == len(self.options):
             self.dismissed = True;
         self.process_selection()
@@ -395,6 +398,45 @@ class Form(object):
     def add_error(self, error_message):
         self.error_messages.append(error_message)
 
+    def validate_email(self, field_index):
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", self.responses[field_index]):
+            self.add_error(self.fields[field_index] + " format is invalid.")
+            return False
+        return True
+
+    # validate nullability and maximum character length
+    # attribute_field_map = {"userid": 0, "dob": 4}, for example
+    def validate_against_schema(self, table_name, attribute_field_map):
+        db_helper = DatabaseHelper.get_instance()
+        # check if they can be null
+        attributes_nullabilities = db_helper.get_attributes_nullabities(table_name)
+        for attribute in attribute_field_map.keys():
+            if self.responses[attribute_field_map[attribute]] == '' and attributes_nullabilities[attribute] == False:
+                self.add_error(self.fields[attribute_field_map[attribute]] + " cannot be null.")
+                return False
+
+        # check that they are the correct lengths
+        attributes_max_lengths = db_helper.get_attributes_lengths(table_name)
+        for attribute in attribute_field_map.keys():
+            if attribute in attributes_max_lengths and len(self.responses[attribute_field_map[attribute]]) > attributes_max_lengths[attribute]:
+                self.add_error(self.fields[attribute_field_map[attribute]] + " cannot be more than "
+                              + str(attributes_max_lengths[attribute]) + " characters long.")
+                return False
+
+        # check that any dates are properly formatted, and in the past
+        date_attributes = db_helper.get_date_attributes(table_name)
+        for attribute in attribute_field_map.keys():
+            if attribute in date_attributes:
+                try:
+                    datetime.strptime(self.responses[attribute_field_map[attribute]], '%Y-%m-%d')
+                except ValueError:
+                    self.add_error(self.fields[attribute_field_map[attribute]] + " is invalid.")
+                    return False
+                if datetime.strptime(self.responses[attribute_field_map[attribute]], '%Y-%m-%d').date() >= date.today():
+                    self.add_error(self.fields[attribute_field_map[attribute]] + " must be in the past. -__-")
+                    return False
+        return True
+
     # Should return true if responses are valid, false otherwise
     # In the case of in valid input, any errors recorded using
     # addError() will be displayed.
@@ -413,18 +455,29 @@ class SignUpForm(Form):
                                          "Email",\
                                          "Password",\
                                          "Date of Birth (YYYY-MM-DD)"],\
-                                         "Join the Club!",\
-                                         multiline_fields = [])
+                                         "Join the Club!")
+        self.attribute_field_map = {"userid": 0,
+                                    "fname": 1,
+                                    "lname": 2,
+                                    "email": 3,
+                                    "password": 4,
+                                    "dob": 5}
+        self.associated_table = "profile"
+
 
     def validate(self):
-        isValid = True
-        # no empty fields
-        for i,field in enumerate(self.fields):
-            if self.responses[i] == '':
-                self.add_error("'" + field + "' cannot be empty.")
-                isValid = False
+        if not (self.validate_against_schema(self.associated_table, self.attribute_field_map) and self.validate_email(3)):
+               return False
+        db_helper = DatabaseHelper.get_instance()
+        if db_helper.check_username_exists(self.responses[0]):
+            self.add_error("Username already exists.")
+            return False;
+        if db_helper.check_email_exists(self.responses[3]):
+            self.add_error("Email already exists.")
+            return False;
+        return True
 
-        return isValid
+
 
 # getResponses will return a list of strings
 # [Username, Password]

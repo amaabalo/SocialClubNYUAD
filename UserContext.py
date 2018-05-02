@@ -37,6 +37,76 @@ class Status:
         if status == self.CREATE_LOG_IN_SUCCESS:
             return "User successfully created and logged in."
 
+class DatabaseHelper:
+    __instance = None
+
+    def __init__(self):
+        if DatabaseHelper.__instance != None:
+            raise Exception("An instance of DatabaseHelper already exists. Use get_instance() instead.")
+        else:
+            DatabaseHelper.__instance = self
+            self.conn = psycopg2.connect("dbname=" + sys.argv[1] + " user=" + sys.argv[2] + " password=" + sys.argv[3] + " host=127.0.0.1")
+            self.cur = self.conn.cursor()
+
+    @staticmethod
+    def get_instance():
+        if DatabaseHelper.__instance == None:
+            DatabaseHelper()
+        return DatabaseHelper.__instance
+
+
+    def get_attributes_nullabities(self, table_name):
+        SQL =  "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = %s"
+        data = (table_name,)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        dict = {}
+        for result in results:
+            dict[result[0]] = True if result[1] == 'YES' else False
+        return dict
+
+    # will only return attributes that have a maximum length specified
+    def get_attributes_lengths(self, table_name):
+        SQL =  "SELECT column_name, character_maximum_length FROM information_schema.columns WHERE table_name = %s"
+        data = (table_name,)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        dict = {}
+        for result in results:
+            if result[1]:
+                dict[result[0]] = result[1]
+        return dict
+
+    def get_date_attributes(self, table_name):
+        SQL =  "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = %s"
+        data = (table_name,)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        lst = []
+        for result in results:
+            if result[1] == 'date':
+                lst.append(result[0])
+        return lst
+
+    def check_username_exists(self, username):
+        SQL = "SELECT * FROM profile WHERE userID = %s"
+        self.cur.execute(SQL, (username,))
+        results = self.cur.fetchall()
+        if (len(results) > 0):
+            return True
+        return False
+
+    def check_email_exists(self, email):
+        SQL = "SELECT * FROM profile WHERE email = %s"
+        self.cur.execute(SQL, (email,))
+        results = self.cur.fetchall()
+        if (len(results) > 0):
+            return True
+        return False
+
+
+
+
 
 class User:
 
@@ -56,7 +126,6 @@ class User:
             self.conn = psycopg2.connect("dbname=" + sys.argv[1] + " user=" + sys.argv[2] + " password=" + sys.argv[3] + " host=127.0.0.1")
             self.cur = self.conn.cursor()
         except Exception as e:
-            print str(e)
             return False
         return True
 
