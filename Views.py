@@ -136,6 +136,7 @@ class HomeMenu(Menu):
 
 
 # Abstract Class
+# Concrete classes must implement validate function
 class Form(object):
     __metaclass__ = ABCMeta
     # name = the name of the form, will be displayed at the top of the view
@@ -181,6 +182,7 @@ class Form(object):
                     break
         return n_lines_printed
 
+
     def print_multiline(self, columns, field, text, highlighted, bulleted,
                         editing, highlight_color = IO.bcolors.OKBLUE,
                         bullet = None, separator = ": "):
@@ -224,6 +226,7 @@ class Form(object):
         n_lines_printed += self.print_with_indent(indentation, text)
         return n_lines_printed
 
+
     def print_single_line(self, columns, field, text, highlighted, bulleted,
                           editing, highlight_color = IO.bcolors.OKBLUE,
                           bullet = None, separator = ": "):
@@ -258,7 +261,7 @@ class Form(object):
         columns = int(columns)
         return (rows, columns)
 
-    # returns number of lines printed
+
     def print_horizontal_bar(self, columns):
         print('#' * columns)
         return 1
@@ -345,7 +348,6 @@ class Form(object):
         self.fill_empty_space(rows, columns, num_rows_printed)
 
 
-
     def get_responses(self):
         while not self.submitted:
             self.display()
@@ -412,10 +414,11 @@ class SignUpForm(Form):
                                          "Password",\
                                          "Date of Birth (YYYY-MM-DD)"],\
                                          "Join the Club!",\
-                                         multiline_fields = [3])
+                                         multiline_fields = [])
 
     def validate(self):
         isValid = True
+        # no empty fields
         for i,field in enumerate(self.fields):
             if self.responses[i] == '':
                 self.add_error("'" + field + "' cannot be empty.")
