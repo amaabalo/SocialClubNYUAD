@@ -77,7 +77,7 @@ class Menu(object):
                 break;
 
     def process_selection_(self):
-        error_messages = []
+        self.error_messages = []
         if self.dismissable and self.current_option == len(self.options):
             self.dismissed = True;
         self.process_selection()
@@ -110,7 +110,7 @@ class WelcomeMenu(Menu):
             responses = signUpForm.get_responses()
             if responses == None:
                 return
-            username, f_name, l_name, email, password, DOB = responses
+            username, f_name, l_name, email, password, verified_password, DOB = responses
             user = User()
             status = user.create_and_log_in(username, f_name, l_name, email, password, DOB)
             if status == Status.CREATE_LOG_IN_SUCCESS:

@@ -104,32 +104,7 @@ class DatabaseHelper:
             return True
         return False
 
-
-
-
-
-class User:
-
-    def __init__(self):
-        # connect to database here
-        success = self.create_connection()
-        if (not success):
-            raise Error('Could not connect to database.')
-        self.user_id = ''
-        self.f_name = ''
-        self.l_name = ''
-        self.email = ''
-        self.logged_in = False
-
-    def create_connection(self):
-        try:
-            self.conn = psycopg2.connect("dbname=" + sys.argv[1] + " user=" + sys.argv[2] + " password=" + sys.argv[3] + " host=127.0.0.1")
-            self.cur = self.conn.cursor()
-        except Exception as e:
-            return False
-        return True
-
-    def get_profile_records(self, results):
+    def profile_records_to_dictionary(self, results):
         rval = []
         print
         for result in results:
@@ -144,45 +119,16 @@ class User:
             rval.append(dict)
         return rval
 
-    def log_in(self, username, password):
-        if not self.check_username_exists(username):
-            return Status.USERNAME_PASS_DNE
+    def check_passwords_match(self, given_username, given_password):
         SQL = "SELECT * FROM profile WHERE userID = %s"
-        self.cur.execute(SQL, (username,))
+        self.cur.execute(SQL, (given_username,))
         results = self.cur.fetchall()
-        result = self.get_profile_records(results)[0]
-        if (result["password"] != password):
-            return Status.USERNAME_PASS_DNM
-        self.user_id = username
-        self.f_name = result["fname"]
-        self.l_name = result["lname"]
-        self.email = result["email"]
-        self.logged_in = True
-        return Status.LOGIN_SUCCESS
-
-    def log_out(self):
-        self.user_id = ''
-        self.f_name = ''
-        self.l_name = ''
-        self.email = ''
-        self.logged_in = False
-        self.conn.close()
-
-    def check_username_exists(self, username):
-        SQL = "SELECT * FROM profile WHERE userID = %s"
-        self.cur.execute(SQL, (username,))
-        results = self.cur.fetchall()
-        if (len(results) > 0):
-            return True
-        return False
-
-    def check_email_exists(self, email):
-        SQL = "SELECT * FROM profile WHERE email = %s"
-        self.cur.execute(SQL, (email,))
-        results = self.cur.fetchall()
-        if (len(results) > 0):
-            return True
-        return False
+        if not results:
+            return False
+        result = self.profile_records_to_dictionary(results)[0]
+        if (result["password"] != given_password):
+            return False
+        return result
 
     def create_new_user(self, username, f_name, l_name, email, password, DOB):
         # check if username or email already exist
@@ -205,8 +151,39 @@ class User:
         return Status.CREATE_SUCCESS
 
 
+class User:
+
+    def __init__(self):
+        self.user_id = ''
+        self.f_name = ''
+        self.l_name = ''
+        self.email = ''
+        self.logged_in = False
+        self.db_helper = DatabaseHelper.get_instance()
+
+
+    def log_in(self, username, password):
+        result = self.db_helper.check_passwords_match(username, password)
+        if not result:
+            return Status.USERNAME_PASS_DNM
+        self.user_id = username
+        self.f_name = result["fname"]
+        self.l_name = result["lname"]
+        self.email = result["email"]
+        self.logged_in = True
+        return Status.LOGIN_SUCCESS
+
+
+    def log_out(self):
+        self.user_id = ''
+        self.f_name = ''
+        self.l_name = ''
+        self.email = ''
+        self.logged_in = False
+
+
     def create_and_log_in(self, username, f_name, l_name, email, password, DOB):
-        res = self.create_new_user(username, f_name, l_name, email, password, DOB)
+        res = self.db_helper.create_new_user(username, f_name, l_name, email, password, DOB)
         if (res != Status.CREATE_SUCCESS):
             return res
         if self.log_in(username, password) == Status.LOGIN_SUCCESS:
