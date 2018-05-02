@@ -147,7 +147,6 @@ class DatabaseHelper:
         except psycopg2.IntegrityError:
             self.conn.rollback()
             return Status.DATABASE_ERROR
-
         return Status.CREATE_SUCCESS
 
 
