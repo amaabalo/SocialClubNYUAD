@@ -4,6 +4,7 @@ import string
 import sys
 from abc import ABCMeta, abstractmethod
 from UserContext import User, Status
+import time, threading
 
 # Abstract Class
 class Menu(object):
@@ -156,12 +157,15 @@ class Form(object):
         self.cursor = u'\u258d'
         self.pointer = u'\u25b8'
 
-    def print_with_indent(indentation, text, selected):
+
+    def print_with_indent(self, indentation, text):
         if (text == ''):
-            return
+            return 0
+        if (text[0] == '\n'):
+            text = text[1:]
         rows, columns = os.popen('stty size', 'r').read().split()
         columns = int(columns)
-
+        n_lines_printed = 0
         text_width = columns - indentation - 2
         lines = text.split('\n')
         for line in lines:
@@ -171,56 +175,80 @@ class Form(object):
                 n_spaces = columns - len(line_to_print) - 2
                 line_to_print += (" " * n_spaces) + " #"
                 print(line_to_print)
+                n_lines_printed += 1
                 line = line[text_width:]
                 if (line == ''):
                     break
+        return n_lines_printed
 
-    def print_multiline(columns, field, text, selected, editable):
-        pointer = ' '
-        if selected:
-            pointer = self.pointer
-        if editable:
+    def print_multiline(self, columns, field, text, highlighted, bulleted,
+                        editing, highlight_color = IO.bcolors.OKBLUE,
+                        bullet = None, separator = ": "):
+        n_lines_printed = 0
+        if (bullet == None):
+            bullet = self.pointer
+
+        if not bulleted:
+            bullet = ' '
+
+        if highlighted:
+            line = "#" + bullet + highlight_color + field + IO.bcolors.ENDC + separator
+            indentation = len(line) - len(highlight_color) - len(IO.bcolors.ENDC)
+        else:
+            line = "#" + bullet + field + separator
+            indentation = len(line)
+
+        if editing:
             text += self.cursor
         # print the first line
-        words = text.split()
-        line = "#" + pointer +  field + ": "
-        indentation = len(line)
-        text_width = len(line) + 2 # ends with a ' #'
+        text_width = indentation + 2 # ends with a ' #'
+        #text_width = len(line) + 2 # ends with a ' #'
         word_start_index = 0
         current_word_index = 0
         first_new_line = text.find('\n', 0)
         space_remaining = max(0, columns - text_width)
+
         if (first_new_line == -1):
             first_new_line = space_remaining
         stop = min(first_new_line, space_remaining)
         to_append = text[0 : stop]
         line += to_append
-        if selected:
-            if len(text) < stop: #end of text
-                pass
-                #line += cursor
         n_spaces = columns - len(line) - 2
-        line += ' '*n_spaces
+        if highlighted:
+            n_spaces += (len(highlight_color) + len(IO.bcolors.ENDC))
+        line += ' ' * n_spaces
         line += " #"
         print(line)
+        n_lines_printed += 1
         text = text[stop : ]
-        printWithIndent(indentation, text, selected)
+        n_lines_printed += self.print_with_indent(indentation, text)
+        return n_lines_printed
 
-    def print_single_line(columns, field, text, selected, editable):
-        cols_available_for_response = columns - (2 + field + 2 + 1) #accounting for cursor
-        end = ' '
-        if (selected):
-            if editable:
-                end = self.cursor
-            text_to_print = text[min(0, len(text) - (cols_available_for_response - 1)): len(text)]
-            text_to_print += end
-            n_spaces = cols_available_for_response - len(text_to_print)
-            print('#' + self.pointer + IO.bcolors.OKBLUE + field + IO.bcolors.ENDC + ": " + text_to_print + ' ' * (n_spaces) + "#")
+    def print_single_line(self, columns, field, text, highlighted, bulleted,
+                          editing, highlight_color = IO.bcolors.OKBLUE,
+                          bullet = None, separator = ": "):
+
+        if (bullet == None):
+            bullet = self.pointer
+
+        cols_available_for_response = columns - len('#' + bullet + field + separator + " #")
+        if not bulleted:
+            bullet = ' '
+
+        if highlighted:
+            field = highlight_color + field + IO.bcolors.ENDC
+
+        start = '#' + bullet + field + separator
+
+        if editing:
+            text_to_print = text[max(0, len(text) - (cols_available_for_response - 1)): len(text)]
+            text_to_print += self.cursor
         else:
-            text_to_print = text[0: (cols_available_for_response - 1)]
-            text_to_print += end
-            n_spaces = cols_available_for_response - len(text_to_print)
-            print('#' + ' ' + field + ": " + text_to_print + ' ' * (n_spaces) + "#")
+            text_to_print = text[0: (cols_available_for_response)]
+
+        n_spaces = cols_available_for_response - len(text_to_print)
+        print(start + text_to_print + ' ' * (n_spaces) + " #")
+
         return 1
 
 
@@ -246,60 +274,76 @@ class Form(object):
             return False
         return index in self.multiline_fields
 
+    def display_multiline_field (self, columns, field, response, selected):
+        return self.print_multiline(columns, field, response, selected, selected, selected)
+
+    def display_single_line_field (self, columns, field, response, selected):
+        return self.print_single_line(columns, field, response, selected, selected, selected)
+
+    def display_error_message (self, columns, error_message):
+        return self.print_multiline(columns, "Error", error_message, True, False,
+                                    False, highlight_color = IO.bcolors.FAIL)
+
 
     def display_all_fields(self, columns):
+        n_rows_printed = 0
         for i, option in enumerate(self.fields):
             if self.is_multiline_field(i):
-                self.print_multiline(columns, option, self.responses[i],  i == self.current_selection, i == self.current_selection)
+                n_rows_printed += self.display_multiline_field(columns, option, self.responses[i], i == self.current_selection)
             else:
-                self.print_single_line(columns, option, self.responses[i], i == self.current_selection, i == self.current_selection)
+                n_rows_printed += self.display_single_line_field(columns, option, self.responses[i], i == self.current_selection)
+        return n_rows_printed
 
-        '''
-        for i, option in enumerate(self.fields):
-            n_spaces = (columns - 5 - len(option) - len(self.responses[i])) # '# field: response#'
-            if (i == self.current_selection):
-                print('#' + u'\u25b8' + IO.bcolors.OKBLUE + option + IO.bcolors.ENDC + ": " + self.responses[i] + u'\u258d' + ' ' * (n_spaces - 1) + "#")
-            else:
-                print('#' + ' ' + option + ": " + self.responses[i] + ' ' * (n_spaces) + "#")
-                '''
 
-    def display(self):
-        rows, columns = os.popen('stty size', 'r').read().split()
-        rows = int(rows)
-        columns = int(columns)
-        num_rows_printed = 0
-
-        num_rows_printed += self.print_horizontal_bar(columns)
-        num_rows_printed += self.print_centered(columns, self.name.upper())
-        # display fields
-        #num_rows_printed += self.display_all_fields(columns)
-        # display fields
-        for i, option in enumerate(self.fields):
-            n_spaces = (columns - 5 - len(option) - len(self.responses[i]))
-            if (i == self.current_selection):
-                print('#' + u'\u25b8' + IO.bcolors.OKBLUE + option + IO.bcolors.ENDC + ": " + self.responses[i] + u'\u258d' + ' ' * (n_spaces - 1) + "#")
-            else:
-                print('#' + ' ' + option + ": " + self.responses[i] + ' ' * (n_spaces) + "#")
-        # display submit option
+    def display_submit_button(self, columns):
         n_spaces = (columns - 3 - len(self.submit))
         if (self.current_selection == len(self.fields)):
             print('#' + u'\u25b8' + IO.bcolors.OKGREEN + self.submit + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
         else:
             print('#' + ' ' + self.submit + ' ' * (n_spaces) + "#")
-        # display cancel option
+        return 1
+
+
+    def display_cancel_option(self, columns):
         n_spaces = (columns - 3 - len(self.cancel))
         if (self.current_selection == len(self.fields) + 1):
             print('#' + u'\u25b8' + IO.bcolors.FAIL + self.cancel + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
         else:
             print('#' + ' ' + self.cancel + ' ' * (n_spaces) + "#")
-        # print error messages
+        return 1
+
+
+    def print_empty_space(self, columns):
         print('#' + " "*(columns - 2) + '#')
+        return 1
+
+
+    def display_error_messages(self, columns):
+        n_rows_printed = self.print_empty_space(columns)
         for error_message in self.error_messages:
-            n_spaces = columns - 2 - len(" Error: ") - len(error_message)
-            print('#' + IO.bcolors.FAIL + " Error: " + IO.bcolors.ENDC + error_message + ' ' * n_spaces + '#')
-        for i in range(rows - 4 - self.no_options - len(self.error_messages) - 1):
+            n_rows_printed += self.display_error_message(columns, error_message)
+        return n_rows_printed
+
+
+    def fill_empty_space(self, rows, columns, num_rows_printed):
+        remainder = num_rows_printed % (rows - 1)
+        to_fill = (rows - 1) - remainder
+        for i in range(to_fill - 1):
             print('#' + " "*(columns - 2) + '#')
         print('#' * columns)
+
+
+    def display(self):
+        rows, columns = self.get_rows_columns()
+        num_rows_printed = 0
+        num_rows_printed += self.print_horizontal_bar(columns)
+        num_rows_printed += self.print_centered(columns, self.name.upper())
+        num_rows_printed += self.display_all_fields(columns)
+        num_rows_printed += self.display_submit_button(columns)
+        num_rows_printed += self.display_cancel_option(columns)
+        num_rows_printed += self.display_error_messages(columns)
+        self.fill_empty_space(rows, columns, num_rows_printed)
+
 
 
     def get_responses(self):
@@ -321,6 +365,9 @@ class Form(object):
                 self.current_selection = (self.current_selection + 1) % self.no_options # can use tab to move down
                 break
             elif key == '\r': # enter
+                if self.is_multiline_field(self.current_selection):
+                    self.responses[self.current_selection] += '\n'
+                    break
                 if self.current_selection == len(self.fields): # submit button
                     self.process_submission_()
                     break
@@ -364,7 +411,8 @@ class SignUpForm(Form):
                                          "Email",\
                                          "Password",\
                                          "Date of Birth (YYYY-MM-DD)"],\
-                                         "Join the Club!")
+                                         "Join the Club!",\
+                                         multiline_fields = [3])
 
     def validate(self):
         isValid = True
@@ -387,5 +435,4 @@ class LogInForm(Form):
             if self.responses[i] == '':
                 self.add_error("'" + field + "' cannot be empty.")
                 isValid = False
-
         return isValid
