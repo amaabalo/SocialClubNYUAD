@@ -33,6 +33,16 @@ class Menu(object):
         self.cursor = u'\u258d'
 
 
+    def print_horizontal_bar(self, columns):
+        print('#' * columns)
+        return 1
+
+    def print_centered(self, columns, string):
+        n_spaces = (columns - 2 - len(string))/2
+        remainder = (columns - 2 - len(string))%2
+        print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
+        return 1
+
     def print_with_indent(self, indentation, text):
             if (text == ''):
                 return 0
@@ -113,6 +123,7 @@ class Menu(object):
                 bullet = self.pointer
 
             cols_available_for_response = columns - len('#' + bullet + field + separator + " #")
+
             if not bulleted:
                 bullet = ' '
 
@@ -149,37 +160,77 @@ class Menu(object):
                 n_rows_printed += self.display_notification(columns, notification)
             return n_rows_printed
 
-    def display(self):
-        rows, columns = self.get_rows_columns()
-        n_spaces = (columns - 2 - len(self.name))/2
-        remainder = (columns - 2 - len(self.name))%2
-        print('#' * columns)
-        # print options
-        print('#' + ' ' * n_spaces + self.name.upper() + ' ' * (n_spaces + remainder) + "#")
+    def display_string_option(self, columns, option, selected):
+        return self.print_single_line(columns, option, '', selected, selected, False, separator = '')
+
+    def display_user_instance_option(self, columns, user, selected):
+        n_rows_printed = 0
+        # print the name
+        name = (user.f_name + " " +  user.l_name).upper()
+        n_rows_printed += self.print_single_line(columns, name, '', selected, selected, False, separator = '')
+        # print username and email address
+        n_rows_printed += self.print_single_line(columns, "Username", user.user_id, False, False, False)
+        n_rows_printed += self.print_single_line(columns, "Email", user.email, False, False, False)
+        n_rows_printed += self.print_empty_space(columns)
+        return n_rows_printed
+
+    def display_all_options(self, columns):
+        n_rows_printed = 0
+        for i, option in enumerate(self.options):
+            if (isinstance(option, str)):
+                n_rows_printed += self.display_string_option(columns, option, i == self.current_option)
+            elif (isinstance(option, User)):
+                n_rows_printed += self.display_user_instance_option(columns, option, i == self.current_option)
+        return n_rows_printed
+
+
+    def display_string_options(self, columns):
         for i, option in enumerate(self.options):
             n_spaces = (columns - 3 - len(option))
             if (i == self.current_option):
                 print('#' + u'\u25b8' + IO.bcolors.OKBLUE + option + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
             else:
                 print('#' + ' ' + option + ' ' * (n_spaces) + "#")
-        #print dismiss option if enabled
+
+    def display_dismiss_option(self, columns):
         if (self.dismissable):
-            n_spaces = (columns - 3 - len(self.cancel))
-            if (self.current_option == len(self.options)):
-                print('#' + u'\u25b8' + IO.bcolors.FAIL + self.cancel + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
-            else:
-                print('#' + ' ' + self.cancel + ' ' * (n_spaces) + "#")
-        #print notifications
-        self.display_notifications(columns)
-        # print error messages
-        print('#' + " "*(columns - 2) + '#')
+            return self.print_single_line(columns, self.cancel, '', self.current_option == len(self.options),
+                                        self.current_option == len(self.options),
+                                        False, highlight_color = IO.bcolors.FAIL, separator = '')
+        return 0
+
+    def display_error_message (self, columns, error_message):
+            return self.print_multiline(columns, "Error", error_message, True, False,
+                                        False, highlight_color = IO.bcolors.FAIL)
+
+    def display_error_messages(self, columns):
+        n_rows_printed = self.print_empty_space(columns)
         for error_message in self.error_messages:
-            n_spaces = columns - 2 - len(" Error: ") - len(error_message)
-            print('#' + IO.bcolors.FAIL + " Error: " + IO.bcolors.ENDC + error_message + ' ' * n_spaces + '#')
-        # fill spaces
-        for i in range(rows - 5 - len(self.options) - len(self.error_messages)) :
-            print('#' + " "*(columns - 2) + '#');
-        print('#' * columns)
+            n_rows_printed += self.display_error_message(columns, error_message)
+        return n_rows_printed
+
+
+    def fill_empty_space(self, rows, columns, num_rows_printed):
+        remainder = num_rows_printed % (rows - 1)
+        to_fill = (rows - 1) - remainder
+        num_rows_printed = 0
+        for i in range(to_fill - 1):
+            num_rows_printed += self.print_empty_space(columns)
+        num_rows_printed += self.print_horizontal_bar(columns)
+        return num_rows_printed
+
+
+    def display(self):
+        rows, columns = self.get_rows_columns()
+        num_rows_printed = 0
+        num_rows_printed += self.print_horizontal_bar(columns)
+        num_rows_printed += self.print_centered(columns, self.name.upper())
+        num_rows_printed += self.print_horizontal_bar(columns)
+        num_rows_printed += self.display_all_options(columns)
+        num_rows_printed += self.display_dismiss_option(columns)
+        num_rows_printed += self.display_notifications(columns)
+        num_rows_printed += self.display_error_messages(columns)
+        num_rows_printed += self.fill_empty_space(rows, columns, num_rows_printed)
 
     # Use this to add an errror which will be displayed, e.g.
     # self.add_error("Username does not exist")
@@ -289,7 +340,16 @@ class FriendsMenu(Menu):
         self.db_helper = DatabaseHelper.get_instance()
 
     def process_selection(self):
-        if self.current_option == 1: #sending a friend request
+        if self.current_option == 0: # searching for someone
+            res = SearchForUserForm().get_responses()
+            if res == None:
+                return
+            keyword, = res
+            db_helper = DatabaseHelper.get_instance()
+            users_found = User.get_user_objects(db_helper.search_for_user(keyword))
+            UserSearchResultsMenu(users_found).start()
+            return
+        if self.current_option == 1: # sending a friend request
             res = WhichFriendForm(self.user).get_responses()
             if not res:
                 return
@@ -304,6 +364,19 @@ class FriendsMenu(Menu):
             else:
                 self.add_error("Failed to send friend request.")
             return
+
+
+class UserSearchResultsMenu(Menu):
+    def __init__(self, users):
+        if users == None or len(users) == 0:
+            name = "SEARCH RETURNED NO RESULTS"
+            users = []
+        else:
+            name = "SEARCH RESULTS"
+        super(UserSearchResultsMenu, self).__init__(None, name, users)
+
+    def process_selection(self):
+        pass
 
 
 # Abstract Class
@@ -517,9 +590,11 @@ class Form(object):
     def fill_empty_space(self, rows, columns, num_rows_printed):
         remainder = num_rows_printed % (rows - 1)
         to_fill = (rows - 1) - remainder
+        num_rows_printed = 0
         for i in range(to_fill - 1):
-            print('#' + " "*(columns - 2) + '#')
-        print('#' * columns)
+            num_rows_printed += self.print_empty_space(columns)
+        num_rows_printed += self.print_horizontal_bar(columns)
+        return num_rows_printed
 
 
     def display(self):
@@ -527,11 +602,12 @@ class Form(object):
         num_rows_printed = 0
         num_rows_printed += self.print_horizontal_bar(columns)
         num_rows_printed += self.print_centered(columns, self.name.upper())
+        num_rows_printed += self.print_horizontal_bar(columns)
         num_rows_printed += self.display_all_fields(columns)
         num_rows_printed += self.display_submit_button(columns)
         num_rows_printed += self.display_cancel_option(columns)
         num_rows_printed += self.display_error_messages(columns)
-        self.fill_empty_space(rows, columns, num_rows_printed)
+        num_rows_printed += self.fill_empty_space(rows, columns, num_rows_printed)
 
     # Call this function after instantiation of a concrete class
     # to display the form and get user's responses. Will return an array of responses corresponding
@@ -730,3 +806,14 @@ class SendFriendRequestForm(Form):
 
     def validate(self):
         return self.validate_against_schema(self.associated_table, self.attribute_field_map)
+
+class SearchForUserForm(Form):
+    def __init__(self):
+        super(SearchForUserForm, self).__init__("SEARCH FOR A USER",
+                                               ["Keyword"], "Search")
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+        return True

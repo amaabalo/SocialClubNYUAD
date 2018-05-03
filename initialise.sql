@@ -122,7 +122,7 @@ CREATE FUNCTION pending_group_lmt() RETURNS trigger AS $pending_group_lmt$
 		END IF;
 		IF (SELECT count(userID) FROM groupMembership WHERE gID = NEW.gID AND userID = NEW.userID) != 0 THEN
 			RAISE EXCEPTION 'member already in group';
-		END IF; 
+		END IF;
 		RETURN NEW;
 	END;
 $pending_group_lmt$ LANGUAGE plpgsql;
@@ -138,7 +138,7 @@ CREATE FUNCTION add_msg_recipients() RETURNS trigger AS $add_msg_recipients$
 		END IF;
 		IF NEW.toGroupID IS NOT NULL THEN
 			INSERT INTO messageRecipient(msgID, toUserID) SELECT NEW.msgID, groupMembership.userID FROM groupMembership WHERE groupMembership.gID = NEW.toGroupID;
-		END IF; 
+		END IF;
 		RETURN NEW;
 	END;
 $add_msg_recipients$ LANGUAGE plpgsql;

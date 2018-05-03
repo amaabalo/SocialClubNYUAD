@@ -49,6 +49,7 @@ class DatabaseHelper:
         else:
             DatabaseHelper.__instance = self
             self.conn = psycopg2.connect("dbname=" + sys.argv[1] + " user=" + sys.argv[2] + " password=" + sys.argv[3] + " host=127.0.0.1")
+            self.conn.set_client_encoding('UTF8')
             self.cur = self.conn.cursor()
 
     @staticmethod
@@ -118,7 +119,7 @@ class DatabaseHelper:
     # Turns a list of tuples from the profile relation into a list of
     # dictionaries whose keys are the attributes of the profile relation and whose
     # values are the contents of the tuples.
-    def profile_records_to_dictionary(self, results):
+    def profile_records_to_dictionaries(self, results):
         rval = []
         print
         for result in results:
@@ -141,7 +142,7 @@ class DatabaseHelper:
         results = self.cur.fetchall()
         if not results:
             return False
-        result = self.profile_records_to_dictionary(results)[0]
+        result = self.profile_records_to_dictionaries(results)[0]
         if (result["password"] != given_password):
             return False
         return result
@@ -212,7 +213,7 @@ class DatabaseHelper:
     # Returns the default value for attribute in the relation with
     # name table_name, or None if there is no default value for attribute.
     def get_default_value(self, table_name, attribute):
-        SQL =  "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = %s AND column_name = %s"
+        SQL =  "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = %s AND column_name = %s;"
         data = (table_name, attribute)
         self.cur.execute(SQL, data)
         results = self.cur.fetchall()
@@ -220,13 +221,24 @@ class DatabaseHelper:
             return None
         return results[0][1]
 
+    # Returns a list of dictionaries of users found by a search with keywoard
+    def search_for_user(self, keyword):
+        SQL =  "SELECT * FROM profile WHERE LOWER(userid) LIKE %s OR LOWER(fname) LIKE %s OR LOWER(lname) LIKE %s OR LOWER(email) LIKE %s;"
+        keyword = '%' + keyword.lower() + '%'
+        data = (keyword, keyword, keyword, keyword)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return None
+        return self.profile_records_to_dictionaries(results)
+
 class User:
 
-    def __init__(self):
-        self.user_id = ''
-        self.f_name = ''
-        self.l_name = ''
-        self.email = ''
+    def __init__(self, user_id = '', f_name = '', l_name = '', email = ''):
+        self.user_id = user_id
+        self.f_name = f_name
+        self.l_name = l_name
+        self.email = email
         self.logged_in = False
         self.db_helper = DatabaseHelper.get_instance()
 
@@ -265,3 +277,12 @@ class User:
         if not self.db_helper.insert_friend_request(self.user_id, username, message) == Status.INSERT_SUCCESS:
             return False
         return True
+
+    # Given a list of dictionaries of user profiles,
+    # returns a list of user objects with the user_id, f_name, l_name, email attributes set.
+    @staticmethod
+    def get_user_objects(profiles):
+        if not profiles:
+            return []
+        return list(map(lambda profile : User(user_id = profile["userID"],
+                        f_name = profile["fname"], l_name = profile["lname"], email = profile["email"]), profiles))
