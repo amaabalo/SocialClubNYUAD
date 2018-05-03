@@ -21,12 +21,130 @@ class Menu(object):
         self.dismissed = False
         self.user = user
         self.error_messages = []
+        self.notifications = []
+        self.pointer = u'\u25b8'
+        self.cursor = u'\u258d'
+
+
+    def print_with_indent(self, indentation, text):
+            if (text == ''):
+                return 0
+            if (text[0] == '\n'):
+                text = text[1:]
+            rows, columns = os.popen('stty size', 'r').read().split()
+            columns = int(columns)
+            n_lines_printed = 0
+            text_width = columns - indentation - 2
+            lines = text.split('\n')
+            for line in lines:
+                while True:
+                    line_to_print = '#' + ' ' * (indentation - 1)
+                    line_to_print += line[0:text_width]
+                    n_spaces = columns - len(line_to_print) - 2
+                    line_to_print += (" " * n_spaces) + " #"
+                    print(line_to_print)
+                    n_lines_printed += 1
+                    line = line[text_width:]
+                    if (line == ''):
+                        break
+            return n_lines_printed
+
+
+    def print_multiline(self, columns, field, text, highlighted, bulleted,
+                            editing, highlight_color = IO.bcolors.OKBLUE,
+                            bullet = None, separator = ": "):
+            n_lines_printed = 0
+            if (bullet == None):
+                bullet = self.pointer
+
+            if not bulleted:
+                bullet = ' '
+
+            if highlighted:
+                line = "#" + bullet + highlight_color + field + IO.bcolors.ENDC + separator
+                indentation = len(line) - len(highlight_color) - len(IO.bcolors.ENDC)
+            else:
+                line = "#" + bullet + field + separator
+                indentation = len(line)
+
+            if editing:
+                text += self.cursor
+            # print the first line
+            text_width = indentation + 2 # ends with a ' #'
+            #text_width = len(line) + 2 # ends with a ' #'
+            word_start_index = 0
+            current_word_index = 0
+            first_new_line = text.find('\n', 0)
+            space_remaining = max(0, columns - text_width)
+
+            if (first_new_line == -1):
+                first_new_line = space_remaining
+            stop = min(first_new_line, space_remaining)
+            to_append = text[0 : stop]
+            line += to_append
+            n_spaces = columns - len(line) - 2
+            if highlighted:
+                n_spaces += (len(highlight_color) + len(IO.bcolors.ENDC))
+            line += ' ' * n_spaces
+            line += " #"
+            print(line)
+            n_lines_printed += 1
+            text = text[stop : ]
+            n_lines_printed += self.print_with_indent(indentation, text)
+            return n_lines_printed
+
+
+    def print_empty_space(self, columns):
+        print('#' + " "*(columns - 2) + '#')
+        return 1
+
+    def print_single_line(self, columns, field, text, highlighted, bulleted,
+                              editing, highlight_color = IO.bcolors.OKBLUE,
+                              bullet = None, separator = ": "):
+
+            if (bullet == None):
+                bullet = self.pointer
+
+            cols_available_for_response = columns - len('#' + bullet + field + separator + " #")
+            if not bulleted:
+                bullet = ' '
+
+            if highlighted:
+                field = highlight_color + field + IO.bcolors.ENDC
+
+            start = '#' + bullet + field + separator
+
+            if editing:
+                text_to_print = text[max(0, len(text) - (cols_available_for_response - 1)): len(text)]
+                text_to_print += self.cursor
+            else:
+                text_to_print = text[0: (cols_available_for_response)]
+
+            n_spaces = cols_available_for_response - len(text_to_print)
+            print(start + text_to_print + ' ' * (n_spaces) + " #")
+
+            return 1
+
+
+    def get_rows_columns(self):
+            rows, columns = os.popen('stty size', 'r').read().split()
+            rows = int(rows)
+            columns = int(columns)
+            return (rows, columns)
+
+    def display_notification (self, columns, error_message):
+        return self.print_multiline(columns, "NOTIFICATION", error_message, True, False,
+                                    False, highlight_color = IO.bcolors.OKBLUE)
+
+    def display_notifications(self, columns):
+            n_rows_printed = self.print_empty_space(columns)
+            for notification in self.notifications:
+                n_rows_printed += self.display_notification(columns, notification)
+            return n_rows_printed
 
 
     def display(self):
-        rows, columns = os.popen('stty size', 'r').read().split()
-        rows = int(rows)
-        columns = int(columns)
+        rows, columns = self.get_rows_columns()
         n_spaces = (columns - 2 - len(self.name))/2
         remainder = (columns - 2 - len(self.name))%2
         print('#' * columns)
@@ -45,6 +163,8 @@ class Menu(object):
                 print('#' + u'\u25b8' + IO.bcolors.FAIL + self.cancel + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
             else:
                 print('#' + ' ' + self.cancel + ' ' * (n_spaces) + "#")
+        #print notifications
+        self.display_notifications(columns)
         # print error messages
         print('#' + " "*(columns - 2) + '#')
         for error_message in self.error_messages:
@@ -57,6 +177,9 @@ class Menu(object):
 
     def add_error(self, error_message):
         self.error_messages.append(error_message)
+
+    def add_notification(self, notification):
+        self.notifications.append(notification)
 
     def start(self):
         while not self.dismissed:
@@ -78,6 +201,7 @@ class Menu(object):
 
     def process_selection_(self):
         self.error_messages = []
+        self. notifications = []
         if self.dismissable and self.current_option == len(self.options):
             self.dismissed = True;
         self.process_selection()
@@ -133,9 +257,43 @@ class HomeMenu(Menu):
                                           "Delete Account"],\
                                           False)
     def process_selection(self):
-        if (self.current_option == 3):
+        if (self.current_option == 0):
+            friends_menu = FriendsMenu(self.user)
+            friends_menu.start()
+        elif (self.current_option == 3):
             self.user.log_out()
             self.dismissed = True
+
+class FriendsMenu(Menu):
+
+    def __init__(self, user):
+        super(FriendsMenu, self).__init__(user, "Friends",\
+                                          ["Search for someone",\
+                                          "Send a friend request",\
+                                          "Confirm friend requests",\
+                                          "Display friends"],\
+                                          True)
+        self.db_helper = DatabaseHelper.get_instance()
+
+    def process_selection(self):
+        if self.current_option == 1: #sending a friend request
+            res = WhichFriendForm(self.user).get_responses()
+            if not res:
+                return
+            friends_username, = res
+            first_name, last_name = self.db_helper.get_names_from_user_id(friends_username)
+            res = SendFriendRequestForm(first_name).get_responses()
+            if not res:
+                return
+            message, = res
+            if self.user.send_request_to(friends_username, message):
+                self.add_notification("Friend request sent!")
+            else:
+                self.add_error("Failed to send friend request.")
+            return
+
+
+
 
 
 # Abstract Class
@@ -146,12 +304,15 @@ class Form(object):
     # fields = List of strings denoting each fields
     # submit = String to be displayed for submit button
     # multiline_fields = List of indices of fields which will be multilined, all others will be single lined
-    def __init__(self, name, fields, submit, multiline_fields = None, hidden_fields = None):
+    def __init__(self, name, fields, submit, multiline_fields = None, hidden_fields = None, defaults = None):
         self.name = name
         self.fields = fields
         self.current_selection = 0
         self.no_options = len(self.fields) + 2 # fields, submit, and cancel
         self.responses = ['' for i in range(len(fields))]
+        if defaults:
+            for key in defaults.keys():
+                self.responses[key] = defaults[key]
         self.submit = submit
         self.cancel = 'CANCEL'
         self.submitted = False
@@ -422,14 +583,14 @@ class Form(object):
         attributes_nullabilities = db_helper.get_attributes_nullabities(table_name)
         for attribute in attribute_field_map.keys():
             if self.responses[attribute_field_map[attribute]] == '' and attributes_nullabilities[attribute] == False:
-                self.add_error(self.fields[attribute_field_map[attribute]] + " cannot be null.")
+                self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" +  " cannot be null.")
                 return False
 
         # check that they are the correct lengths
         attributes_max_lengths = db_helper.get_attributes_lengths(table_name)
         for attribute in attribute_field_map.keys():
             if attribute in attributes_max_lengths and len(self.responses[attribute_field_map[attribute]]) > attributes_max_lengths[attribute]:
-                self.add_error(self.fields[attribute_field_map[attribute]] + " cannot be more than "
+                self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" + " cannot be more than "
                               + str(attributes_max_lengths[attribute]) + " characters long.")
                 return False
 
@@ -440,10 +601,10 @@ class Form(object):
                 try:
                     datetime.strptime(self.responses[attribute_field_map[attribute]], '%Y-%m-%d')
                 except ValueError:
-                    self.add_error(self.fields[attribute_field_map[attribute]] + " is invalid.")
+                    self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" + " is invalid.")
                     return False
                 if datetime.strptime(self.responses[attribute_field_map[attribute]], '%Y-%m-%d').date() >= date.today():
-                    self.add_error(self.fields[attribute_field_map[attribute]] + " must be in the past. -__-")
+                    self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" + " must be in the past. -__-")
                     return False
         return True
 
@@ -454,7 +615,7 @@ class Form(object):
     def validate(self):
         raise NotImplementedError('')
 
-# get_responses will return a list of strings
+# get_responses will return a list of strings corresponding to the fiellds
 # [Username, First Name, Last Name, Email, Password]
 class SignUpForm(Form):
     def __init__(self):
@@ -510,3 +671,50 @@ class LogInForm(Form):
             self.add_error("Username does not exist.")
             return False;
         return True
+
+class WhichFriendForm(Form):
+    def __init__(self, user):
+        super(WhichFriendForm, self).__init__("Send A Friend Request", ["Enter your friend's username"], "Submit")
+        self.user = user
+        self.db_helper = DatabaseHelper.get_instance()
+
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+
+        if self.responses[0] == self.user.user_id:
+            self.add_error("You cannot send yourself a friend request. -__-")
+            return False;
+
+        if not self.db_helper.check_username_exists(self.responses[0]):
+            self.add_error("Username does not exist.")
+            return False;
+
+        first_name, last_name = self.db_helper.get_names_from_user_id(self.responses[0])
+        if self.db_helper.check_friendship_exists(self.user.user_id, self.responses[0]):
+            self.add_error("You are already friends with " + first_name + " " + last_name + ".")
+            return False
+
+        if self.db_helper.check_has_pending_friend_request_from(self.user.user_id, self.responses[0]):
+            self.add_error("You already have a pending request from " + first_name + " " + last_name + ".")
+            return False
+
+        if self.db_helper.check_has_pending_friend_request_from(self.responses[0], self.user.user_id):
+            self.add_error("You have already sent a friend request to " + first_name + " " + last_name + ".")
+            return False
+        return True
+
+class SendFriendRequestForm(Form):
+    def __init__(self, first_name):
+        self.attribute_field_map = {"message": 0}
+        self.associated_table = "friends"
+        default = DatabaseHelper.get_instance().get_default_value("pendingfriends", "message")
+        super(SendFriendRequestForm, self).__init__("Send A Friend Request To " + first_name,
+                                                   ["Enter a message"], "Send Request",
+                                                   multiline_fields = [0], defaults = {0:default})
+
+
+    def validate(self):
+        return self.validate_against_schema(self.associated_table, self.attribute_field_map)

@@ -14,6 +14,7 @@ class Status:
     USERNAME_PASS_DNM = 7 # Email and password do not match
     CREATE_SUCCESS = 8
     CREATE_LOG_IN_SUCCESS = 9
+    INSERT_SUCCESS = 10
 
     def error_string(self, status):
         if status == self.CONN_FAIL:
@@ -36,6 +37,8 @@ class Status:
             return "User successfully created."
         if status == self.CREATE_LOG_IN_SUCCESS:
             return "User successfully created and logged in."
+        if status == self.INSERT_SUCCESS:
+            return "Record successfully inserted."
 
 class DatabaseHelper:
     __instance = None
@@ -149,6 +152,58 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.CREATE_SUCCESS
 
+    def check_friendship_exists(self, user_id1, user_id2):
+        SQL = "SELECT * FROM friends WHERE (userID1 = %s AND userID2 = %s) OR (userID1 = %s AND userID2 = %s);"
+        data = ((user_id1, user_id2, user_id2, user_id1))
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return False
+        return True
+
+    # returns None if there is no corresponding name
+    def get_names_from_user_id(self, user_id):
+        SQL = "SELECT fname, lname FROM profile WHERE userID = %s"
+        self.cur.execute(SQL, (user_id,))
+        results = self.cur.fetchall()
+        if not results:
+            return None
+        return(results[0])
+
+    # returns true if user_id1 has a friend request from user_id2
+    # in database, userID2 is recipient
+    def check_has_pending_friend_request_from(self, user_id1, user_id2):
+        SQL = "SELECT * FROM pendingfriends WHERE userID2 = %s AND userID1 = %s;"
+        data = (user_id1, user_id2)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return False
+        return True
+
+    # inserts a friend request from user_id1 to user_id2 into pendingfriends
+    def insert_friend_request(self, user_id1, user_id2, message):
+        SQL = "INSERT INTO pendingfriends VALUES (%s, %s, %s);"
+        data = (user_id1, user_id2, message)
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+
+
+            return Status.DATABASE_ERROR
+        return Status.INSERT_SUCCESS
+
+    # returns none if there is no default value for the field
+    def get_default_value(self, table_name, attribute):
+        SQL =  "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = %s AND column_name = %s"
+        data = (table_name, attribute)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return None
+        return results[0][1]
 
 class User:
 
@@ -180,10 +235,14 @@ class User:
         self.email = ''
         self.logged_in = False
 
-
     def create_and_log_in(self, username, f_name, l_name, email, password, DOB):
         res = self.db_helper.create_new_user(username, f_name, l_name, email, password, DOB)
         if (res != Status.CREATE_SUCCESS):
             return res
         if self.log_in(username, password) == Status.LOGIN_SUCCESS:
             return Status.CREATE_LOG_IN_SUCCESS
+
+    def send_request_to(self, username, message):
+        if not self.db_helper.insert_friend_request(self.user_id, username, message) == Status.INSERT_SUCCESS:
+            return False
+        return True

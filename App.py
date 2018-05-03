@@ -15,5 +15,4 @@ if __name__=='__main__':
         sys.exit(0)
     m = Views.WelcomeMenu()
     m.start()
-    DBHelper = DatabaseHelper.get_instance()
-    print(DBHelper.get_date_attributes("profile"))
+    
