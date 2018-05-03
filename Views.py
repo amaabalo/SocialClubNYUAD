@@ -9,9 +9,16 @@ from datetime import datetime, date
 import re
 
 # Abstract Class
+# Must implement process_selection
 class Menu(object):
     __metaclass__ = ABCMeta
-    def __init__(self, user, name, options, dismissable):
+    # User object = can be None
+    # name = title to be displayed at the top of the menu
+    # options = list of options to be displayed on the menu
+    # dismissable = whether the menu can be dismissed or not. If dismissable =  False,
+    # the menu can still be dismissed by setting self.dismissed = True in
+    # process_selection
+    def __init__(self, user, name, options, dismissable = True):
         self.name = name
         self.options = options
         self.current_option = 0
@@ -142,7 +149,6 @@ class Menu(object):
                 n_rows_printed += self.display_notification(columns, notification)
             return n_rows_printed
 
-
     def display(self):
         rows, columns = self.get_rows_columns()
         n_spaces = (columns - 2 - len(self.name))/2
@@ -175,12 +181,17 @@ class Menu(object):
             print('#' + " "*(columns - 2) + '#');
         print('#' * columns)
 
+    # Use this to add an errror which will be displayed, e.g.
+    # self.add_error("Username does not exist")
     def add_error(self, error_message):
         self.error_messages.append(error_message)
 
+    # Use this to add a notification which will be displayed
     def add_notification(self, notification):
         self.notifications.append(notification)
 
+    # Call this function after instantiation of a concrete class
+    # to display the menu.
     def start(self):
         while not self.dismissed:
             self.display()
@@ -206,6 +217,8 @@ class Menu(object):
             self.dismissed = True;
         self.process_selection()
 
+    # here, check the index of the currently selected item using
+    # self.current option, process accordingly. If dismissable = False
     @abstractmethod
     def process_selection(self):
         raise NotImplementedError('')
@@ -213,7 +226,7 @@ class Menu(object):
 class WelcomeMenu(Menu):
 
     def __init__(self):
-        super(WelcomeMenu, self).__init__(None, "Welcome", ["Log In", "Sign Up", "Exit"], False)
+        super(WelcomeMenu, self).__init__(None, "Welcome", ["Log In", "Sign Up", "Exit"], dismissable = False)
 
     def process_selection(self):
         if self.current_option == 0:
@@ -255,7 +268,7 @@ class HomeMenu(Menu):
                                           "Analytics",\
                                           "Log Out",\
                                           "Delete Account"],\
-                                          False)
+                                          dismissable = False)
     def process_selection(self):
         if (self.current_option == 0):
             friends_menu = FriendsMenu(self.user)
@@ -293,9 +306,6 @@ class FriendsMenu(Menu):
             return
 
 
-
-
-
 # Abstract Class
 # Concrete classes must implement validate function
 class Form(object):
@@ -304,6 +314,8 @@ class Form(object):
     # fields = List of strings denoting each fields
     # submit = String to be displayed for submit button
     # multiline_fields = List of indices of fields which will be multilined, all others will be single lined
+    # hidden_fields = List of indices of fields whose responses should be hidden
+    # defaults = a dictionary of default values to be used for each field, e.g. {0 : "Add me as a friend!", 5: "Abu Dhabi" }
     def __init__(self, name, fields, submit, multiline_fields = None, hidden_fields = None, defaults = None):
         self.name = name
         self.fields = fields
@@ -521,7 +533,9 @@ class Form(object):
         num_rows_printed += self.display_error_messages(columns)
         self.fill_empty_space(rows, columns, num_rows_printed)
 
-
+    # Call this function after instantiation of a concrete class
+    # to display the form and get user's responses. Will return an array of responses corresponding
+    # to each field.
     def get_responses(self):
         while not self.submitted:
             self.display()
@@ -569,6 +583,7 @@ class Form(object):
     def add_error(self, error_message):
         self.error_messages.append(error_message)
 
+    # validates an email using regex
     def validate_email(self, field_index):
         if not re.match(r"[^@]+@[^@]+\.[^@]+", self.responses[field_index]):
             self.add_error(self.fields[field_index] + " format is invalid.")
@@ -576,7 +591,9 @@ class Form(object):
         return True
 
     # validate nullability, maximum character length, and date formatting
-    # attribute_field_map = {"userid": 0, "dob": 4}, for example
+    # attribute_field_map = {"userid": 0, "dob": 4}, for example meaning that
+    # userid the attribute database corresponds to the first field in the form,
+    # while dob corresponds to the fifth field
     def validate_against_schema(self, table_name, attribute_field_map):
         db_helper = DatabaseHelper.get_instance()
         # check if they can be null
@@ -609,14 +626,12 @@ class Form(object):
         return True
 
     # Should return true if responses are valid, false otherwise
-    # In the case of in valid input, any errors recorded using
-    # addError() will be displayed.
+    # In the case of in valid input, can use add_error to display an error
+    # to the user
     @abstractmethod
     def validate(self):
         raise NotImplementedError('')
 
-# get_responses will return a list of strings corresponding to the fiellds
-# [Username, First Name, Last Name, Email, Password]
 class SignUpForm(Form):
     def __init__(self):
         super(SignUpForm, self).__init__("Sign Up",\
@@ -653,9 +668,6 @@ class SignUpForm(Form):
             return False
         return True
 
-
-# getResponses will return a list of strings
-# [Username, Password]
 class LogInForm(Form):
     def __init__(self):
         super(LogInForm, self).__init__("Log In", ["Username", "Password"], "Log In", hidden_fields = [1])

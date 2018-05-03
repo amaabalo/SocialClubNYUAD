@@ -57,7 +57,9 @@ class DatabaseHelper:
             DatabaseHelper()
         return DatabaseHelper.__instance
 
-
+    # Returns a dictionary whose keys are the attributes in the relation
+    # table_name, and whose values are True or False depending on whether the
+    # attribute can be null or not.
     def get_attributes_nullabities(self, table_name):
         SQL =  "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = %s"
         data = (table_name,)
@@ -68,7 +70,9 @@ class DatabaseHelper:
             dict[result[0]] = True if result[1] == 'YES' else False
         return dict
 
-    # will only return attributes that have a maximum length specified
+    # Returns a dictionary whose keys are the attributes in the relation
+    # table_name, and whose values are the maximum lengths of the attributes.
+    # Will only return attributes that have a maximum length specified.
     def get_attributes_lengths(self, table_name):
         SQL =  "SELECT column_name, character_maximum_length FROM information_schema.columns WHERE table_name = %s"
         data = (table_name,)
@@ -80,6 +84,8 @@ class DatabaseHelper:
                 dict[result[0]] = result[1]
         return dict
 
+    # Returns a list of any attributes in the relation table_name that have
+    # a data type of date
     def get_date_attributes(self, table_name):
         SQL =  "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = %s"
         data = (table_name,)
@@ -91,6 +97,7 @@ class DatabaseHelper:
                 lst.append(result[0])
         return lst
 
+    # Returns True if a username already exists in the database, False otherwise.
     def check_username_exists(self, username):
         SQL = "SELECT * FROM profile WHERE userID = %s"
         self.cur.execute(SQL, (username,))
@@ -99,6 +106,7 @@ class DatabaseHelper:
             return True
         return False
 
+    # Returns True if an email already exists in the database, False otherwise.
     def check_email_exists(self, email):
         SQL = "SELECT * FROM profile WHERE email = %s"
         self.cur.execute(SQL, (email,))
@@ -107,6 +115,9 @@ class DatabaseHelper:
             return True
         return False
 
+    # Turns a list of tuples from the profile relation into a list of
+    # dictionaries whose keys are the attributes of the profile relation and whose
+    # values are the contents of the tuples.
     def profile_records_to_dictionary(self, results):
         rval = []
         print
@@ -122,6 +133,8 @@ class DatabaseHelper:
             rval.append(dict)
         return rval
 
+    # Check if the password in the database for the user given_username
+    # matches given_password. Returns True if so, false otherwise.
     def check_passwords_match(self, given_username, given_password):
         SQL = "SELECT * FROM profile WHERE userID = %s"
         self.cur.execute(SQL, (given_username,))
@@ -133,6 +146,7 @@ class DatabaseHelper:
             return False
         return result
 
+    # Inserts a new user into the database.
     def create_new_user(self, username, f_name, l_name, email, password, DOB):
         # check if username or email already exist
         if self.check_username_exists(username):
@@ -152,6 +166,8 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.CREATE_SUCCESS
 
+    # Check if a friendship exists between user_id1 and user_id2. Returns True
+    # if they are friends, False otherwise.
     def check_friendship_exists(self, user_id1, user_id2):
         SQL = "SELECT * FROM friends WHERE (userID1 = %s AND userID2 = %s) OR (userID1 = %s AND userID2 = %s);"
         data = ((user_id1, user_id2, user_id2, user_id1))
@@ -181,7 +197,7 @@ class DatabaseHelper:
             return False
         return True
 
-    # inserts a friend request from user_id1 to user_id2 into pendingfriends
+    # Inserts a friend request from user_id1 to user_id2 into pendingfriends
     def insert_friend_request(self, user_id1, user_id2, message):
         SQL = "INSERT INTO pendingfriends VALUES (%s, %s, %s);"
         data = (user_id1, user_id2, message)
@@ -190,12 +206,11 @@ class DatabaseHelper:
 			self.conn.commit()
         except psycopg2.IntegrityError:
             self.conn.rollback()
-
-
             return Status.DATABASE_ERROR
         return Status.INSERT_SUCCESS
 
-    # returns none if there is no default value for the field
+    # Returns the default value for attribute in the relation with
+    # name table_name, or None if there is no default value for attribute.
     def get_default_value(self, table_name, attribute):
         SQL =  "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = %s AND column_name = %s"
         data = (table_name, attribute)
@@ -215,7 +230,7 @@ class User:
         self.logged_in = False
         self.db_helper = DatabaseHelper.get_instance()
 
-
+    # Logs an existing user in using the given credentials. Returns Status.LOGIN_SUCCESS on success.
     def log_in(self, username, password):
         result = self.db_helper.check_passwords_match(username, password)
         if not result:
@@ -227,7 +242,6 @@ class User:
         self.logged_in = True
         return Status.LOGIN_SUCCESS
 
-
     def log_out(self):
         self.user_id = ''
         self.f_name = ''
@@ -235,13 +249,18 @@ class User:
         self.email = ''
         self.logged_in = False
 
+    # Creates and logs a new user in. Returns Status.CREATE_LOG_IN_SUCCESS if successful
     def create_and_log_in(self, username, f_name, l_name, email, password, DOB):
         res = self.db_helper.create_new_user(username, f_name, l_name, email, password, DOB)
         if (res != Status.CREATE_SUCCESS):
             return res
-        if self.log_in(username, password) == Status.LOGIN_SUCCESS:
-            return Status.CREATE_LOG_IN_SUCCESS
+        res = self.log_in(username, password)
+        if not res == Status.LOGIN_SUCCESS:
+            return res
+        return Status.CREATE_LOG_IN_SUCCESS
 
+    # Send a request from this user to the user with user_id username, with message
+    # message. Returns True if successful, False otherwise.
     def send_request_to(self, username, message):
         if not self.db_helper.insert_friend_request(self.user_id, username, message) == Status.INSERT_SUCCESS:
             return False
