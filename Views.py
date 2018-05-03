@@ -336,7 +336,7 @@ class FriendsMenu(Menu):
                                           "Send a friend request",\
                                           "Confirm friend requests",\
                                           "Display friends"],\
-                                          True)
+                                          True) 
         self.db_helper = DatabaseHelper.get_instance()
 
     def process_selection(self):
