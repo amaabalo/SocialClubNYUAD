@@ -121,7 +121,6 @@ class DatabaseHelper:
     # values are the contents of the tuples.
     def profile_records_to_dictionaries(self, results):
         rval = []
-        print
         for result in results:
             dict = {}
             dict["userID"] = result[0]
@@ -131,6 +130,22 @@ class DatabaseHelper:
             dict["password"] = result[4]
             dict["DOB"] = result[5]
             dict["lastlogin"] = result[6]
+            rval.append(dict)
+        return rval
+
+    # Turns a list of tuples of the form (user_id1, first_name, last_name, message) into a list of
+    # dictionaries whose keys are the attributes (userid2, userid1, fname, lname, message) and whose
+    # values are the contents of the tuples.
+    def pendingfriends_records_to_dictionaries(self, results):
+        rval = []
+        for result in results:
+            print (result)
+            dict = {}
+            dict["userID2"] = result[0]
+            dict["userID1"] = result[1]
+            dict["fname"] = result[2]
+            dict["lname"] = result[3]
+            dict["message"] = result[4]
             rval.append(dict)
         return rval
 
@@ -187,8 +202,8 @@ class DatabaseHelper:
             return None
         return(results[0])
 
-    # returns true if user_id1 has a friend request from user_id2
-    # in database, userID2 is recipient
+    # returns true if user_id1 has a friend request from user_id2.
+    # In database, userID2 is recipient.
     def check_has_pending_friend_request_from(self, user_id1, user_id2):
         SQL = "SELECT * FROM pendingfriends WHERE userID2 = %s AND userID1 = %s;"
         data = (user_id1, user_id2)
@@ -231,6 +246,53 @@ class DatabaseHelper:
         if not results:
             return None
         return self.profile_records_to_dictionaries(results)
+
+    # Returns a list of dictionaries of unconfirmed friend requests for a given user
+    # In database, userID2 is recipient.
+    def get_unconfirmed_friend_requests(self, user_id):
+        SQL =  "WITH a AS (SELECT * FROM pendingfriends WHERE userid2 = %s)\
+               SELECT userid2, userid1, fname, lname, message FROM a JOIN profile ON a.userid1 = profile.userid;;"
+        data = (user_id,)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return None
+        return self.pendingfriends_records_to_dictionaries(results)
+
+    # Returns a list of dictionaries of unconfirmed group join requests for any groups managed by a
+    # given user.
+    def get_unconfirmed_group_join_requests(self, user_id):
+        pass
+
+
+class Request:
+
+    def __init__(self, recipient_id, requester_id, first_name, last_name, message, group_id = None):
+        self.recipient_id = recipient_id
+        self.requester_id = requester_id
+        self.requester_f_name = first_name
+        self.requester_l_name = last_name
+        self.message = message
+        self.group_id = group_id
+
+    # Given a list of dictionaries of join requests,
+    # returns a list of Request objects with the relevant attributes set.
+    @staticmethod
+    def get_request_objects(requests):
+        lst = []
+        if not requests:
+            return lst
+        for request in requests:
+            if "gID" in request.keys(): # a group request
+                lst.append(Request(request["manager"], request["userID"],
+                                       request["fname"], request["lname"],
+                                       request["message"], group_id = request["gID"]))
+            else:
+                lst.append(Request(request["userID2"], request["userID1"],
+                                       request["fname"], request["lname"],
+                                       request["message"]))
+        return lst
+
 
 class User:
 
@@ -278,8 +340,11 @@ class User:
             return False
         return True
 
+    def get_pending_friend_requests(self):
+        return Request.get_request_objects(self.db_helper.get_unconfirmed_friend_requests(self.user_id))
+
     # Given a list of dictionaries of user profiles,
-    # returns a list of user objects with the user_id, f_name, l_name, email attributes set.
+    # returns a list of User objects with the user_id, f_name, l_name, email attributes set.
     @staticmethod
     def get_user_objects(profiles):
         if not profiles:

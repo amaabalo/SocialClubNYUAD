@@ -3,7 +3,7 @@ import IO
 import string
 import sys
 from abc import ABCMeta, abstractmethod
-from UserContext import User, Status, DatabaseHelper
+from UserContext import User, Status, DatabaseHelper, Request
 import time, threading
 from datetime import datetime, date
 import re
@@ -163,7 +163,7 @@ class Menu(object):
     def display_string_option(self, columns, option, selected):
         return self.print_single_line(columns, option, '', selected, selected, False, separator = '')
 
-    def display_user_instance_option(self, columns, user, selected):
+    def display_user_instance(self, columns, user, selected):
         n_rows_printed = 0
         # print the name
         name = (user.f_name + " " +  user.l_name).upper()
@@ -174,13 +174,26 @@ class Menu(object):
         n_rows_printed += self.print_empty_space(columns)
         return n_rows_printed
 
+    def display_request_instance(self, columns, request, selected):
+        n_rows_printed = 0
+        # print the name and message
+        title = (request.requester_f_name + " " +  request.requester_l_name).upper()
+        if request.group_id:
+            title += " wants to join " + request.groupid
+        n_rows_printed += self.print_multiline(columns, title, request.message, selected, selected, False)
+        #n_rows_printed += self.print_empty_space(columns)
+        return n_rows_printed
+
     def display_all_options(self, columns):
         n_rows_printed = 0
         for i, option in enumerate(self.options):
+            selected = i == self.current_option
             if (isinstance(option, str)):
-                n_rows_printed += self.display_string_option(columns, option, i == self.current_option)
+                n_rows_printed += self.display_string_option(columns, option, selected)
             elif (isinstance(option, User)):
-                n_rows_printed += self.display_user_instance_option(columns, option, i == self.current_option)
+                n_rows_printed += self.display_user_instance(columns, option, selected)
+            elif (isinstance(option, Request)):
+                n_rows_printed += self.display_request_instance(columns, option, selected)
         return n_rows_printed
 
 
@@ -336,7 +349,7 @@ class FriendsMenu(Menu):
                                           "Send a friend request",\
                                           "Confirm friend requests",\
                                           "Display friends"],\
-                                          True) 
+                                          True)
         self.db_helper = DatabaseHelper.get_instance()
 
     def process_selection(self):
@@ -364,6 +377,9 @@ class FriendsMenu(Menu):
             else:
                 self.add_error("Failed to send friend request.")
             return
+        if self.current_option == 2: # confirming friend requests
+            pending_friend_requests = self.user.get_pending_friend_requests()
+            ConfirmFriendRequestsMenu(pending_friend_requests).start()
 
 
 class UserSearchResultsMenu(Menu):
@@ -377,6 +393,19 @@ class UserSearchResultsMenu(Menu):
 
     def process_selection(self):
         pass
+
+class ConfirmFriendRequestsMenu(Menu):
+    def __init__(self, requests):
+        if requests == None or len(requests) == 0:
+            name = "YOU HAVE NO FRIEND REQUESTS :("
+            requests = []
+        else:
+            name = "PENDING FRIEND REQUESTS"
+        super(ConfirmFriendRequestsMenu, self).__init__(None, name, requests)
+
+    def process_selection(self):
+        pass
+        # TODO: CREATE FORM HERE
 
 
 # Abstract Class
