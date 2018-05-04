@@ -434,6 +434,8 @@ class ConfirmRequestsMenu(Menu):
             requests = []
         else:
             name = "PENDING REQUESTS"
+            requests.append("ACCEPT ALL")
+            requests.append("DELETE ALL")
         super(ConfirmRequestsMenu, self).__init__(user, name, requests)
         if (requests):
             self.add_notification("Press ENTER to accept a request, 'ACCEPT ALL' to accept all requests, or 'DELETE ALL' to delete all requests. Any unaccepted requests will automatically be deleted when you exit this screen.")
@@ -443,24 +445,64 @@ class ConfirmRequestsMenu(Menu):
         # delete all remaining requests
         pass
 
-    def process_selection(self):
-        if self.current_option < len(self.options):
-            request = self.options[self.current_option]
-            if request.group_id:
+    def accept_all_requests(self):
+        if (len(self.options) <= 2):
+            self.add_error("No more request to accept.")
+            return
+        to_delete = []
+        for i in range(len(self.options) - 2):
+            request = self.options[i]
+            if (request.group_id): # a group request
                 if self.db_helper.check_group_limit_reached(request.group_id):
-                    self.add_notification("The group " + request.group_name + " is full. Cannot accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
-                    return
+                    continue
                 res = self.user.accept_group_join_request_from(request.requester_id, request.group_id)
             else:
                 res = self.user.accept_friend_request_from(request.requester_id)
             if res:
-                request = self.options.pop(self.current_option)
-                self.no_options -= 1
-                self.current_option %= self.no_options
-                self.add_notification("Accepted request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+                to_delete.append(request)
             else:
                 self.add_error("Could not accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+
+        for req in to_delete:
+            self.options.remove(req)
+
+        notification = "Accepted all requests"
+        if len(self.options) > 2:
+            notification += ". Any remaining requests could not be accepted due to errors"
+            if (self.options
+            [0].group_id):
+                notification += " or full groups"
+        notification += "."
+        self.add_notification(notification)
+
+    def accept_request(self, current_option):
+        request = self.options[current_option]
+        if request.group_id:
+            if self.db_helper.check_group_limit_reached(request.group_id):
+                self.add_notification("The group " + request.group_name + " is full. Cannot accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+                return
+            res = self.user.accept_group_join_request_from(request.requester_id, request.group_id)
+        else:
+            res = self.user.accept_friend_request_from(request.requester_id)
+        if res:
+            request = self.options.pop(current_option)
+            self.no_options -= 1
+            self.current_option %= self.no_options
+            self.add_notification("Accepted request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+        else:
+            self.add_error("Could not accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+
+    def process_selection(self):
+        if self.current_option < len(self.options) - 2:
+            self.accept_request(self.current_option)
             return
+        if self.current_option == len(self.options) - 2: #accept all
+            self.accept_all_requests()
+            return
+        if self.current_option == len(self.options) - 1: #delete all
+            self.add_notification("Deleted all requests.")
+            pass
+
         # TODO: CREATE FORM HERE
 
 
