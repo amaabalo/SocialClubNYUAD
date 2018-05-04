@@ -28,7 +28,7 @@ cur = conn.cursor()
 # Inserts random users
 def insertUsers(n_users):
 	for i in range(n_users):
-		userID = (str(i + 1)).zfill(20) # pad with 0s
+		userID = (str(i + 1))#.zfill(20) # pad with 0s
 		fname = random.choice(first_names).strip()
 		lname = random.choice(last_names).strip()
 		email = fname[0].lower() + lname[0].lower() + str(i + 1) + '@nyu.edu'
@@ -53,18 +53,18 @@ def insertFriendships(n_users, n_friendships):
 	if (n_friendships > n_possible_friendships):
 		return -1
 
-	t = float(n_friendships) / n_possible_friendships 
+	t = float(n_friendships) / n_possible_friendships
 	count = 0
 	while (count < n_friendships) :
 		for i in range(n_users - 1):
 			for j in range(i + 1, n_users):
 				x = random.uniform(0, 1)
 				if (x <= t):
-					userID1 = str(i + 1).zfill(20)
-					userID2 = str(j + 1).zfill(20)
+					userID1 = str(i + 1)#.zfill(20)
+					userID2 = str(j + 1)#.zfill(20)
 					ts = time.time()
 					friendshipDate = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
-					try: 
+					try:
 						cur.execute('INSERT INTO friends(userID1, userID2, friendshipDate) VALUES (%s, %s, %s)', (userID1, userID2, friendshipDate))
 						conn.commit()
 						count += 1;
@@ -75,10 +75,10 @@ def insertFriendships(n_users, n_friendships):
 def insertGroups(n_groups, n_users):
 	for i in range(n_groups):
 		#create group
-		gID = str(i + 1).zfill(20)
+		gID = str(i + 1)#.zfill(20)
 		name = random.choice(adjectives).strip() + '-' + random.choice(nouns).strip()
 		lmt = random.randint(10, 25)
-		try: 
+		try:
 			cur.execute('INSERT INTO groups(gID, name, lmt) VALUES (%s, %s, %s)', (gID, name, lmt))
 			conn.commit()
 		except psycopg2.IntegrityError:
@@ -89,31 +89,31 @@ def insertGroups(n_groups, n_users):
 		manager = random.choice(members)
 
 		for member in members:
-			try: 
+			try:
 				if member == manager:
 					role = 'manager'
 				else:
 					role = 'member'
-				userID = str(member).zfill(20)
+				userID = str(member)#.zfill(20)
 				cur.execute('INSERT INTO groupMembership(gID, userID, role) VALUES (%s, %s, %s)', (gID, userID, role))
 				conn.commit()
 			except psycopg2.IntegrityError:
 				conn.rollback()
-			
+
 def insertMessages(n_users, n_groups, n_messages):
 	for i in range(n_messages):
 		user1, user2, gID = 'NULL', 'NULL', 'NULL'
 		msgID = str(i+1).zfill(20)
-		user1 = str(random.randint(1, n_users)).zfill(20)
+		user1 = str(random.randint(1, n_users))#.zfill(20)
 
 		to_user = random.randint(0, 2)
 		if(to_user):
 			#cannot send message to self
-			user2 = str(random.randint(1, n_users)).zfill(20)
+			user2 = str(random.randint(1, n_users))#.zfill(20)
 			while user1 == user2:
-				user2 = str(random.randint(1, n_users)).zfill(20)
+				user2 = str(random.randint(1, n_users))#.zfill(20)
 		else:
-			gID = str(random.randint(1, n_groups)).zfill(20)
+			gID = str(random.randint(1, n_groups))#.zfill(20)
 
 		message = ''
 		msg_len = random.randint(1, 200)
@@ -129,13 +129,13 @@ def insertMessages(n_users, n_groups, n_messages):
 		else:
 			user2 = None
 
-		try: 
+		try:
 			cur.execute('INSERT INTO messages VALUES (%s, %s, %s, %s, %s, %s)', (msgID, user1, user2, gID, message, date))
 			conn.commit()
 		except psycopg2.IntegrityError as e:
 			print(e)
 			conn.rollback()
-		
+
 insertUsers(100)
 insertFriendships(100, 300)
 insertGroups(25, 100)
