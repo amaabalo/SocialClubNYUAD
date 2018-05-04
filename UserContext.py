@@ -352,6 +352,22 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.INSERT_SUCCESS
 
+    # Create a new group with user_id as the manager
+    def create_group(self, user_id, group_id, group_name, limit, description):
+        SQL1 = "INSERT INTO groups VALUES (%s, %s, %s, %s);"
+        data1 = (group_id, group_name, limit, description)
+        SQL2 = "INSERT INTO groupmembership VALUES (%s, %s, %s);"
+        data2 = (group_id, user_id, 'manager')
+        try:
+            self.cur.execute(SQL1,data1)
+            self.cur.execute(SQL2,data2)
+            self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            return Status.DATABASE_ERROR
+        return Status.INSERT_SUCCESS
+
+
     # Returns the default value for attribute in the relation with
     # name table_name, or None if there is no default value for attribute.
     def get_default_value(self, table_name, attribute):
@@ -612,6 +628,12 @@ class User:
             return res
         return Status.CREATE_LOG_IN_SUCCESS
         #TODO update lastlogin
+
+    # Creates a new group with user as the manager
+    def create_new_group(self, group_id, group_name, limit, description):
+        if not self.db_helper.create_group(self.user_id, group_id, group_name, limit, description) == Status.INSERT_SUCCESS:
+            return False
+        return True
 
     # Send a request from this user to the user with user_id username, with message
     # message. Returns True if successful, False otherwise.

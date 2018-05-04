@@ -42,8 +42,8 @@ CREATE TABLE pendingFriends (
 CREATE TABLE groups(
 	gID varchar(20),
 	name varchar(40) NOT NULL,
-	lmt integer DEFAULT 10,
-	description varchar(200),
+	lmt integer DEFAULT 10 	NOT NULL,
+	description varchar(200) NOT NULL,
 	PRIMARY KEY (gID)
 );
 
@@ -76,7 +76,7 @@ CREATE TABLE groupMembership(
 	userID varchar(20),
 	role varchar(20),
 	PRIMARY KEY (gID, userID),
-	FOREIGN KEY(gID) REFERENCES groups,
+	FOREIGN KEY(gID) REFERENCES groups ON DELETE CASCADE,
 	FOREIGN KEY (userID) REFERENCES profile ON DELETE CASCADE,
 	CHECK (role IN ('manager', 'member'))
 );

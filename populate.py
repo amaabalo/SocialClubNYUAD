@@ -76,10 +76,13 @@ def insertGroups(n_groups, n_users):
 	for i in range(n_groups):
 		#create group
 		gID = str(i + 1)#.zfill(20)
-		name = random.choice(adjectives).strip() + '-' + random.choice(nouns).strip()
+		word1 = random.choice(adjectives).strip()
+		word2 = random.choice(nouns).strip()
+		name = word1 + '-' + word2
 		lmt = random.randint(10, 25)
+		description = word1 + " " + word2 + "."
 		try:
-			cur.execute('INSERT INTO groups(gID, name, lmt) VALUES (%s, %s, %s)', (gID, name, lmt))
+			cur.execute('INSERT INTO groups(gID, name, lmt, description) VALUES (%s, %s, %s, %s)', (gID, name, lmt, description))
 			conn.commit()
 		except psycopg2.IntegrityError:
 			conn.rollback()

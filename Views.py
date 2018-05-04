@@ -370,9 +370,10 @@ class FriendsMenu(Menu):
         super(FriendsMenu, self).__init__(user, "Friends",\
                                           ["Search for someone",\
                                           "Send a friend request",\
-                                          "Send a group join request",\
                                           "Confirm friend requests",\
+                                          "Send a group join request",\
                                           "Confirm group requests",\
+                                          "Create a group",\
                                           "Display friends"],\
                                           True)
         self.db_helper = DatabaseHelper.get_instance()
@@ -403,7 +404,7 @@ class FriendsMenu(Menu):
             else:
                 self.add_error("Failed to send friend request to " + name + ".")
             return
-        if self.current_option == 2: # sending a group join request
+        if self.current_option == 3: # sending a group join request
             res = WhichGroupForm(self.user).get_responses()
             if not res:
                 return
@@ -418,7 +419,7 @@ class FriendsMenu(Menu):
             else:
                 self.add_error("Request to join " + group_name + " failed.")
 
-        if self.current_option == 3: # confirming friend requests
+        if self.current_option == 2: # confirming friend requests
             pending_friend_requests = self.user.get_pending_friend_requests()
             ConfirmRequestsMenu(self.user, pending_friend_requests).start()
             return
@@ -426,7 +427,17 @@ class FriendsMenu(Menu):
             pending_group_requests = self.user.get_pending_group_join_requests()
             ConfirmRequestsMenu(self.user, pending_group_requests).start()
             return
-        if self.current_option == 5: #displaying friends
+        if self.current_option == 5: # creating a new group
+            res = CreateGroupForm().get_responses()
+            if not res:
+                return
+            group_id, group_name, limit, description = res
+            if not self.user.create_new_group(group_id, group_name, limit, description):
+                self.add_error("Could not create group.")
+                return
+            self.add_notification("Success! You are now the manager of your new group, " + group_name + ".")
+            return
+        if self.current_option == 6: #displaying friends
             friends = self.user.get_friends()
             DisplayFriendsMenu(friends).start()
             return
@@ -888,7 +899,7 @@ class Form(object):
         attributes_nullabilities = db_helper.get_attributes_nullabities(table_name)
         for attribute in attribute_field_map.keys():
             if self.responses[attribute_field_map[attribute]] == '' and attributes_nullabilities[attribute] == False:
-                self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" +  " cannot be null.")
+                self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" +  " cannot be empty.")
                 return False
 
         # check that they are the correct lengths
@@ -953,6 +964,35 @@ class SignUpForm(Form):
             return False;
         if not self.responses[4] == self.responses[5]:
             self.add_error("Passwords do not match.")
+            return False
+        return True
+
+class CreateGroupForm(Form):
+    def __init__(self):
+        self.db_helper = DatabaseHelper.get_instance()
+        self.associated_table = "groups"
+        default_limit = str(self.db_helper.get_default_value(self.associated_table, "lmt"))
+        super(CreateGroupForm, self).__init__("Create a New Group",\
+                                        ["Group ID",\
+                                         "Name",\
+                                         "Limit",\
+                                         "Description"],\
+                                         "Create Group",
+                                         defaults = {2:default_limit})
+        self.attribute_field_map = {"gid": 0,
+                                    "name": 1,
+                                    "lmt": 2,
+                                    "description": 3}
+
+
+    def validate(self):
+        if not (self.validate_against_schema(self.associated_table, self.attribute_field_map)):
+            return False
+        if self.db_helper.check_group_id_exists(self.responses[0]):
+            self.add_error("Group ID already exists.")
+            return False
+        if not self.responses[2].isdigit():
+            self.add_error("'" + self.fields[2] + "'" + " must be a number.")
             return False
         return True
 
