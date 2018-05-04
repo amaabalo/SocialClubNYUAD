@@ -33,7 +33,7 @@ CREATE TABLE friends (
 CREATE TABLE pendingFriends (
 	userID1 varchar(20),
 	userID2 varchar(20),
-	message char(200) DEFAULT 'Hi! Let''s be friends!',
+	message char(200) DEFAULT 'Hi! We should be friends!',
 	PRIMARY KEY (userID1, userID2),
 	FOREIGN KEY (userID1) REFERENCES profile ON DELETE CASCADE,
 	FOREIGN KEY (userID2) REFERENCES profile ON DELETE CASCADE
@@ -77,7 +77,8 @@ CREATE TABLE groupMembership(
 	role varchar(20),
 	PRIMARY KEY (gID, userID),
 	FOREIGN KEY(gID) REFERENCES groups,
-	FOREIGN KEY (userID) REFERENCES profile ON DELETE CASCADE
+	FOREIGN KEY (userID) REFERENCES profile ON DELETE CASCADE,
+	CHECK (role IN ('manager', 'member'))
 );
 
 /* ASK DELIS ABOUT PENDING USERS, GROUP LIMIT*/

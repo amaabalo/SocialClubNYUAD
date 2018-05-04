@@ -12,10 +12,10 @@ import re
 # Must implement process_selection
 class Menu(object):
     __metaclass__ = ABCMeta
-    # User object = can be None
+    # user = User object can be None
     # name = title to be displayed at the top of the menu
     # options = list of options to be displayed on the menu
-    # dismissable = whether the menu can be dismissed or not. If dismissable =  False,
+    # dismissable = whether the menu can be dismissed or not. If dismissable = False,
     # the menu can still be dismissed by setting self.dismissed = True in
     # process_selection
     def __init__(self, user, name, options, dismissable = True):
@@ -155,10 +155,15 @@ class Menu(object):
                                     False, highlight_color = IO.bcolors.OKBLUE)
 
     def display_notifications(self, columns):
+        n_rows_printed = 0
+        if self.notifications:
             n_rows_printed = self.print_empty_space(columns)
-            for notification in self.notifications:
-                n_rows_printed += self.display_notification(columns, notification)
-            return n_rows_printed
+        for notification in self.notifications:
+            n_rows_printed += self.display_notification(columns, notification)
+        if self.notifications:
+            n_rows_printed += self.print_empty_space(columns)
+            n_rows_printed += self.print_horizontal_bar(columns)
+        return n_rows_printed
 
     def display_string_option(self, columns, option, selected):
         return self.print_single_line(columns, option, '', selected, selected, False, separator = '')
@@ -179,9 +184,9 @@ class Menu(object):
         # print the name and message
         title = (request.requester_f_name + " " +  request.requester_l_name).upper()
         if request.group_id:
-            title += " wants to join " + request.groupid
+            title += " wants to join " + request.group_name
         n_rows_printed += self.print_multiline(columns, title, request.message, selected, selected, False)
-        #n_rows_printed += self.print_empty_space(columns)
+        n_rows_printed += self.print_empty_space(columns)
         return n_rows_printed
 
     def display_all_options(self, columns):
@@ -239,9 +244,9 @@ class Menu(object):
         num_rows_printed += self.print_horizontal_bar(columns)
         num_rows_printed += self.print_centered(columns, self.name.upper())
         num_rows_printed += self.print_horizontal_bar(columns)
+        num_rows_printed += self.display_notifications(columns)
         num_rows_printed += self.display_all_options(columns)
         num_rows_printed += self.display_dismiss_option(columns)
-        num_rows_printed += self.display_notifications(columns)
         num_rows_printed += self.display_error_messages(columns)
         num_rows_printed += self.fill_empty_space(rows, columns, num_rows_printed)
 
@@ -267,7 +272,7 @@ class Menu(object):
             if key == '\x1b[A' or key == '\x1b[D':
                 self.current_option = (self.current_option - 1) % self.no_options
                 break;
-            elif key == '\x1b[B' or key == '\x1b[C':
+            elif key == '\x1b[B' or key == '\x1b[C' or key == '\t':
                 self.current_option = (self.current_option + 1) % self.no_options
                 break;
             elif key == '\r':
@@ -278,8 +283,13 @@ class Menu(object):
         self.error_messages = []
         self. notifications = []
         if self.dismissable and self.current_option == len(self.options):
+            self.on_dismiss()
             self.dismissed = True;
         self.process_selection()
+
+    # function that can be overridden to do something just before dismissing
+    def on_dismiss(self):
+        pass
 
     # here, check the index of the currently selected item using
     # self.current option, process accordingly. If dismissable = False
@@ -326,7 +336,7 @@ class WelcomeMenu(Menu):
 class HomeMenu(Menu):
 
     def __init__(self, user):
-        super(HomeMenu, self).__init__(user, "Dashboard",\
+        super(HomeMenu, self).__init__(user, user.f_name + "'s Dashboard",\
                                           ["Friends",\
                                           "Messaging",\
                                           "Analytics",\
@@ -347,7 +357,9 @@ class FriendsMenu(Menu):
         super(FriendsMenu, self).__init__(user, "Friends",\
                                           ["Search for someone",\
                                           "Send a friend request",\
+                                          "Send a group join request",\
                                           "Confirm friend requests",\
+                                          "Confirm group requests",\
                                           "Display friends"],\
                                           True)
         self.db_helper = DatabaseHelper.get_instance()
@@ -372,14 +384,35 @@ class FriendsMenu(Menu):
             if not res:
                 return
             message, = res
-            if self.user.send_request_to(friends_username, message):
-                self.add_notification("Friend request sent!")
+            name = first_name + " " + last_name
+            if self.user.send_friend_request_to(friends_username, message):
+                self.add_notification("Friend request sent to " + name + "!")
             else:
-                self.add_error("Failed to send friend request.")
+                self.add_error("Failed to send friend request to " + name + ".")
             return
-        if self.current_option == 2: # confirming friend requests
+        if self.current_option == 2: # sending a group join request
+            res = WhichGroupForm(self.user).get_responses()
+            if not res:
+                return
+            group_id, = res
+            group_name = self.db_helper.get_group_name_from_group_id(group_id)
+            res = SendGroupJoinRequestForm(group_name).get_responses()
+            if not res:
+                return
+            message, = res
+            if self.user.send_group_join_request_to(group_id, message):
+                self.add_notification("Successfully requested to join " + group_name + ".")
+            else:
+                self.add_error("Request to join " + group_name + " failed.")
+
+        if self.current_option == 3: # confirming friend requests
             pending_friend_requests = self.user.get_pending_friend_requests()
-            ConfirmFriendRequestsMenu(pending_friend_requests).start()
+            ConfirmRequestsMenu(self.user, pending_friend_requests).start()
+            return
+        if self.current_option == 4: # confirming group requests
+            pending_group_requests = self.user.get_pending_group_join_requests()
+            ConfirmRequestsMenu(self.user, pending_group_requests).start()
+            return
 
 
 class UserSearchResultsMenu(Menu):
@@ -394,17 +427,40 @@ class UserSearchResultsMenu(Menu):
     def process_selection(self):
         pass
 
-class ConfirmFriendRequestsMenu(Menu):
-    def __init__(self, requests):
+class ConfirmRequestsMenu(Menu):
+    def __init__(self, user, requests):
         if requests == None or len(requests) == 0:
-            name = "YOU HAVE NO FRIEND REQUESTS :("
+            name = "YOU HAVE NO REQUESTS :("
             requests = []
         else:
-            name = "PENDING FRIEND REQUESTS"
-        super(ConfirmFriendRequestsMenu, self).__init__(None, name, requests)
+            name = "PENDING REQUESTS"
+        super(ConfirmRequestsMenu, self).__init__(user, name, requests)
+        if (requests):
+            self.add_notification("Press ENTER to accept a request, 'ACCEPT ALL' to accept all requests, or 'DELETE ALL' to delete all requests. Any unaccepted requests will automatically be deleted when you exit this screen.")
+        self.db_helper = DatabaseHelper.get_instance()
+
+    def on_dismiss(self):
+        # delete all remaining requests
+        pass
 
     def process_selection(self):
-        pass
+        if self.current_option < len(self.options):
+            request = self.options[self.current_option]
+            if request.group_id:
+                if self.db_helper.check_group_limit_reached(request.group_id):
+                    self.add_notification("The group " + request.group_name + " is full. Cannot accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+                    return
+                res = self.user.accept_group_join_request_from(request.requester_id, request.group_id)
+            else:
+                res = self.user.accept_friend_request_from(request.requester_id)
+            if res:
+                request = self.options.pop(self.current_option)
+                self.no_options -= 1
+                self.current_option %= self.no_options
+                self.add_notification("Accepted request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+            else:
+                self.add_error("Could not accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+            return
         # TODO: CREATE FORM HERE
 
 
@@ -653,11 +709,8 @@ class Form(object):
             if key == '\x1b[A' or key == '\x1b[D':
                 self.current_selection = (self.current_selection - 1) % self.no_options
                 break
-            elif key == '\x1b[B' or key == '\x1b[C':
+            elif key == '\x1b[B' or key == '\x1b[C' or key == '\t':
                 self.current_selection = (self.current_selection + 1) % self.no_options
-                break
-            elif key == '\t':
-                self.current_selection = (self.current_selection + 1) % self.no_options # can use tab to move down
                 break
             elif key == '\r': # enter
                 if self.is_multiline_field(self.current_selection):
@@ -826,11 +879,52 @@ class WhichFriendForm(Form):
 class SendFriendRequestForm(Form):
     def __init__(self, first_name):
         self.attribute_field_map = {"message": 0}
-        self.associated_table = "friends"
+        self.associated_table = "pendingfriends"
         default = DatabaseHelper.get_instance().get_default_value("pendingfriends", "message")
         super(SendFriendRequestForm, self).__init__("Send A Friend Request To " + first_name,
                                                    ["Enter a message"], "Send Request",
                                                    multiline_fields = [0], defaults = {0:default})
+
+
+    def validate(self):
+        return self.validate_against_schema(self.associated_table, self.attribute_field_map)
+
+
+class WhichGroupForm(Form):
+    def __init__(self, user):
+        super(WhichGroupForm, self).__init__("Send A Group Join Request", ["Enter the group's id"], "Submit")
+        self.user = user
+        self.db_helper = DatabaseHelper.get_instance()
+
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+
+        if not self.db_helper.check_group_id_exists(self.responses[0]):
+            self.add_error("No existing group with id '" + self.responses[0] + "'.")
+            return False
+
+        role = self.db_helper.check_is_group_member_or_manager(self.user.user_id, self.responses[0])
+        group_name = self.db_helper.get_group_name_from_group_id(self.responses[0])
+        if role:
+            self.add_error("You are already a " + role + " of " + group_name + ".")
+            return False
+
+        if self.db_helper.check_has_pending_join_request_from(self.responses[0], self.user.user_id):
+            self.add_error("You already have already requested to join " + group_name + ".")
+            return False
+
+        return True
+
+class SendGroupJoinRequestForm(Form):
+    def __init__(self, group_name):
+        self.attribute_field_map = {"message": 0}
+        self.associated_table = "pendinggroupmembers"
+        super(SendGroupJoinRequestForm, self).__init__("Request to join " + group_name,
+                                                   ["Enter a message"], "Send Request",
+                                                   multiline_fields = [0], defaults = {0:"Hi! I'd like to join this group."})
 
 
     def validate(self):
@@ -845,4 +939,17 @@ class SearchForUserForm(Form):
             if self.responses[i] == '':
                 self.add_error("'" + field + "' cannot be empty.")
                 return False
+        return True
+
+class ConfirmRequestsForm(Form):
+    def __init__(self):
+        super(ConfirmFriendRequestsForm, self).__init__("CONFIRM REQUEST",
+                                               ["Are you sure you want to confirm this request"], "Submit")
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+
+
         return True
