@@ -133,7 +133,7 @@ def insertMessages(n_users, n_groups, n_messages):
 			user2 = None
 
 		try:
-			cur.execute('INSERT INTO messages VALUES (%s, %s, %s, %s, %s, %s)', (msgID, user1, user2, gID, message, date))
+			cur.execute('INSERT INTO messages (fromuserid, touserid, togroupid, message, datesent) VALUES (%s, %s, %s, %s, %s)', (user1, user2, gID, message, date))
 			conn.commit()
 		except psycopg2.IntegrityError as e:
 			print(e)

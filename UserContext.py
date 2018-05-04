@@ -352,6 +352,31 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.INSERT_SUCCESS
 
+    # inserts a message from user_id1 to user_id2
+    # trigger will appropriately update messagerecipient table
+    def insert_message_to_user(self, user_id1, user_id2, message):
+        SQL = "INSERT INTO messages (fromuserid, touserid, message) VALUES (%s, %s, %s);"
+        data = (user_id1, user_id2, message)
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError as e:
+            print(str(e))
+            self.conn.rollback()
+            return Status.DATABASE_ERROR
+        return Status.INSERT_SUCCESS
+
+    def insert_message_to_group(self, user_id, group_id, message):
+        SQL = "INSERT INTO messages (fromuserid, togroupid, message) VALUES (%s, %s, %s);"
+        data = (user_id, group_id, message)
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            return Status.DATABASE_ERROR
+        return Status.INSERT_SUCCESS
+
     # Create a new group with user_id as the manager
     def create_group(self, user_id, group_id, group_name, limit, description):
         SQL1 = "INSERT INTO groups VALUES (%s, %s, %s, %s);"
@@ -646,6 +671,14 @@ class User:
     # Returns True if successful, False otherwise.
     def send_group_join_request_to(self, group_id,  message):
         if not self.db_helper.insert_group_join_request(self.user_id, group_id, message) == Status.INSERT_SUCCESS:
+            return False
+        return True
+
+    #Send a message to another user
+    def send_message_to(self, user_id, message):
+        if not self.db_helper.check_friendship_exists(self.user_id, user_id):
+            return False
+        if not self.db_helper.insert_message_to_user(self.user_id, user_id, message) == Status.INSERT_SUCCESS:
             return False
         return True
 

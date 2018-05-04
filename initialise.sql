@@ -49,7 +49,7 @@ CREATE TABLE groups(
 
 /* Handle message deletion when user is deleted in profile*/
 CREATE TABLE messages (
-	msgID varchar(20),
+	msgID SERIAL NOT NULL,
 	fromUserID varchar(20) NOT NULL,
 	toUserID varchar(20) DEFAULT NULL,
 	toGroupID varchar(20) DEFAULT NULL,
@@ -64,8 +64,8 @@ CREATE TABLE messages (
 );
 
 CREATE TABLE messageRecipient (
-	msgID varchar(20),
-	toUserID varchar(20) DEFAULT NULL,
+	msgID integer,
+	toUserID varchar(20) NOT NULL,
 	PRIMARY KEY (msgID, toUserID),
 	FOREIGN KEY (msgID) REFERENCES messages,
 	FOREIGN KEY (toUserID) REFERENCES profile ON DELETE CASCADE

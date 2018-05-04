@@ -278,6 +278,7 @@ class Menu(object):
         while not self.dismissed:
             self.display()
             self.process_key()
+        self.on_dismiss()
 
     def process_key(self):
         while True:
@@ -360,6 +361,10 @@ class HomeMenu(Menu):
         if (self.current_option == 0):
             friends_menu = FriendsMenu(self.user)
             friends_menu.start()
+            return
+        if self.current_option == 1: #Messaging
+            MessagingMenu(self.user).start()
+            return
         elif (self.current_option == 3):
             self.user.log_out()
             self.dismissed = True
@@ -441,6 +446,52 @@ class FriendsMenu(Menu):
             friends = self.user.get_friends()
             DisplayFriendsMenu(friends).start()
             return
+
+class MessagingMenu(Menu):
+    def __init__(self, user):
+        super(MessagingMenu, self).__init__(user, "Messaging",\
+                                          ["Message a Friend",\
+                                          "Message a Group"],\
+                                          dismissable = True)
+    def process_selection(self):
+        if self.current_option == 0: # Message a friend
+            friends = self.user.get_friends()
+            recipient = SelectRecipientMenu(friends).start()
+            if not recipient:
+                return
+            res = SendMessageForm(recipient).get_responses()
+            if not res:
+                return
+            message, = res
+            if not self.user.send_message_to(recipient.user_id, message):
+                self.add_error("Could not send message to " + recipient.f_name + " " + recipient.l_name + ".")
+            else:
+                self.add_notification("Success! Your message to " + recipient.f_name + " " + recipient.l_name + " has been sent.")
+            return
+        if self.current_option == 1: # Message a group
+            pass
+
+
+class SelectRecipientMenu(Menu):
+    def __init__(self, friends):
+        if not friends:
+            name = "Your contact list is empty :( try adding some friends!"
+            friends = []
+        else:
+            name = "SELECT RECIPIENT"
+        super(SelectRecipientMenu, self).__init__(None, name, friends)
+        self.last_selection = None
+
+    # will return last option selected
+    def start(self):
+        super(SelectRecipientMenu, self).start()
+        return self.last_selection
+
+    def process_selection(self):
+        if self.current_option < len(self.options):
+            self.last_selection = self.options[self.current_option]
+            self.dismissed = True
+
 
 
 
@@ -898,7 +949,7 @@ class Form(object):
         # check if they can be null
         attributes_nullabilities = db_helper.get_attributes_nullabities(table_name)
         for attribute in attribute_field_map.keys():
-            if self.responses[attribute_field_map[attribute]] == '' and attributes_nullabilities[attribute] == False:
+            if self.responses[attribute_field_map[attribute]].strip() == '' and attributes_nullabilities[attribute] == False:
                 self.add_error("'" + self.fields[attribute_field_map[attribute]] + "'" +  " cannot be empty.")
                 return False
 
@@ -1059,7 +1110,6 @@ class SendFriendRequestForm(Form):
     def validate(self):
         return self.validate_against_schema(self.associated_table, self.attribute_field_map)
 
-
 class WhichGroupForm(Form):
     def __init__(self, user):
         super(WhichGroupForm, self).__init__("Send A Group Join Request", ["Enter the group's id"], "Submit")
@@ -1127,3 +1177,14 @@ class ConfirmRequestsForm(Form):
 
 
         return True
+
+class SendMessageForm(Form):
+    def __init__(self, recipient):
+        title = "send a message to " + recipient.f_name + " " + recipient.l_name
+        super(SendMessageForm, self).__init__(title, ["Enter your message"],\
+                                              "Send Message", multiline_fields = [0])
+        self.associated_table = "messages"
+        self.attribute_field_map = {"message": 0}
+
+    def validate(self):
+        return self.validate_against_schema(self.associated_table, self.attribute_field_map)
