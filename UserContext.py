@@ -19,6 +19,7 @@ class Status:
     DELETE_ERROR = 12
     REQUEST_NONEXISTENT = 13
     GROUP_LIMIT_REACHED = 14
+    UPDATE_SUCCESS = 15
 
 
     @staticmethod
@@ -53,6 +54,8 @@ class Status:
             return "Request does not exist."
         if status == Status.GROUP_LIMIT_REACHED:
             return "The group's limit has been reached."
+        if status == Status.UPDATE_SUCCESS:
+            return "Successfully updated record."
 
 class DatabaseHelper:
     __instance = None
@@ -241,7 +244,7 @@ class DatabaseHelper:
         SQL = "WITH a AS (SELECT userid1 as friendid FROM friends WHERE userid2 = %s),\
                     b AS (SELECT userid2 as friendid FROM friends WHERE userid1 = %s),\
                     c AS (SELECT * FROM a UNION SELECT * FROM b)\
-               SELECT userid, fname, lname, email, '', dob, '' FROM c JOIN profile ON c.friendid = profile.userid;"
+               SELECT userid, fname, lname, email, '', dob, lastlogin FROM c JOIN profile ON c.friendid = profile.userid;"
         data = (user_id, user_id)
         self.cur.execute(SQL, data)
         results = self.cur.fetchall()
@@ -513,6 +516,19 @@ class DatabaseHelper:
             return None
         return self.pendinggroupmembers_records_to_dictionaries(results)
 
+    #updates the last login for a givien user to the given time
+    def update_last_login(self, user_id, timestamp):
+        SQL = "UPDATE profile SET lastlogin = %s WHERE userid = %s;"
+        data = (timestamp, user_id)
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            return Status.DATABASE_ERROR
+        return Status.UPDATE_SUCCESS
+
+
 
 
 class Request:
@@ -552,13 +568,15 @@ class Request:
 
 class User:
 
-    def __init__(self, user_id = '', f_name = '', l_name = '', email = '', dob = ''):
+    def __init__(self, user_id = '', f_name = '', l_name = '', email = '', dob = '', lastlogin = None):
         self.user_id = user_id
         self.f_name = f_name
         self.l_name = l_name
         self.email = email
         self.dob = dob
+        self.lastlogin = lastlogin
         self.logged_in = False
+
         self.db_helper = DatabaseHelper.get_instance()
 
     # Logs an existing user in using the given credentials. Returns Status.LOGIN_SUCCESS on success.
@@ -570,7 +588,11 @@ class User:
         self.f_name = result["fname"]
         self.l_name = result["lname"]
         self.email = result["email"]
+        self.lastlogin = result["lastlogin"]
         self.logged_in = True
+        ts = time.time()
+        lastlogin = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+        self.db_helper.update_last_login(self.user_id, lastlogin)
         return Status.LOGIN_SUCCESS
 
     def log_out(self):
@@ -589,6 +611,7 @@ class User:
         if not res == Status.LOGIN_SUCCESS:
             return res
         return Status.CREATE_LOG_IN_SUCCESS
+        #TODO update lastlogin
 
     # Send a request from this user to the user with user_id username, with message
     # message. Returns True if successful, False otherwise.
@@ -646,9 +669,42 @@ class User:
             return False
         return True
 
-    def get_all_friends(self):
-        return User.get_user_objects(self.db_helper.get_all_friends(self.user_id))
+    def get_friends(self, limit = None):
+        if limit:
+            return User.get_user_objects(self.db_helper.get_all_friends(self.user_id))[0:limit] #lol
+        else:
+            return User.get_user_objects(self.db_helper.get_all_friends(self.user_id))
 
+    def get_age(self):
+        today = datetime.date.today()
+        return today.year - self.dob.year - ((today.month, today.day) < (self.dob.month, self.dob.day))
+
+    def get_last_active(self):
+        if not self.lastlogin:
+            return "unknown"
+
+        now = datetime.datetime.now()
+        diff = now - self.lastlogin
+
+        years = diff.days / 365
+        if years >= 1:
+            return str(years) + " year" +  "s"*(not years == 1) + " ago"
+        months = diff.days / 28
+        if months >= 1:
+            return str(months) + " month" +  "s"*(not months == 1) + " ago"
+        weeks = diff.days / 7
+        if weeks >= 1:
+            return str(weeks) + " week" +  "s"*(not weeks == 1) + " ago"
+        if diff.days >= 1:
+            return str(diff.days) + " day" +  "s"*(not diff.days == 1) + " ago"
+        hours = diff.seconds / 3600
+        if hours >= 1:
+            return str(hours) + " hour" +  "s"*(not hours == 1) + " ago"
+        minutes = diff.seconds / 60
+        if (minutes < 5):
+            return "just now"
+        else:
+            return str(minutes) + " minutes ago"
 
     # Given a list of dictionaries of user profiles,
     # returns a list of User objects with the user_id, f_name, l_name, email attributes set.
@@ -658,4 +714,5 @@ class User:
             return []
         return list(map(lambda profile : User(user_id = profile["userID"],
                         f_name = profile["fname"], l_name = profile["lname"],
-                        email = profile["email"], dob = profile["DOB"]), profiles))
+                        email = profile["email"], dob = profile["DOB"],
+                        lastlogin = profile["lastlogin"]), profiles))

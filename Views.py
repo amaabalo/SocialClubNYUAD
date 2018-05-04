@@ -15,10 +15,11 @@ class Menu(object):
     # user = User object can be None
     # name = title to be displayed at the top of the menu
     # options = list of options to be displayed on the menu
+    # options_title = title to be displayed before options
     # dismissable = whether the menu can be dismissed or not. If dismissable = False,
     # the menu can still be dismissed by setting self.dismissed = True in
     # process_selection
-    def __init__(self, user, name, options, dismissable = True):
+    def __init__(self, user, name, options, dismissable = True, options_title = ''):
         self.name = name
         self.options = options
         self.current_option = 0
@@ -29,6 +30,7 @@ class Menu(object):
         self.user = user
         self.error_messages = []
         self.notifications = []
+        self.options_title = options_title
         self.pointer = u'\u25b8'
         self.cursor = u'\u258d'
 
@@ -37,10 +39,13 @@ class Menu(object):
         print('#' * columns)
         return 1
 
-    def print_centered(self, columns, string):
+    def print_centered(self, columns, string, highlight_color = None):
         n_spaces = (columns - 2 - len(string))/2
         remainder = (columns - 2 - len(string))%2
-        print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
+        if highlight_color:
+            print('#' + ' ' * n_spaces + highlight_color + string + IO.bcolors.ENDC + ' ' * (n_spaces + remainder) + "#")
+        else:
+            print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
         return 1
 
     def print_with_indent(self, indentation, text):
@@ -171,10 +176,10 @@ class Menu(object):
     def display_user_instance(self, columns, user, selected):
         n_rows_printed = 0
         # print the name
-        name = (user.f_name + " " +  user.l_name).upper()
+        name = (user.f_name + " " +  user.l_name).upper() + " ~ " + user.user_id + " ~ "
         n_rows_printed += self.print_single_line(columns, name, '', selected, selected, False, separator = '')
         # print username and email address
-        n_rows_printed += self.print_single_line(columns, "Username", user.user_id, False, False, False)
+        #n_rows_printed += self.print_single_line(columns, "Username", user.user_id, False, False, False)
         n_rows_printed += self.print_single_line(columns, "Email", user.email, False, False, False)
         n_rows_printed += self.print_empty_space(columns)
         return n_rows_printed
@@ -237,14 +242,22 @@ class Menu(object):
         num_rows_printed += self.print_horizontal_bar(columns)
         return num_rows_printed
 
+    def display_screen_title(self, columns):
+        return self.print_centered(columns, self.name.upper())
+
+    def display_options_title(self, columns):
+        if self.options_title:
+            return self.print_centered(columns, self.options_title)
+        return 0
 
     def display(self):
         rows, columns = self.get_rows_columns()
         num_rows_printed = 0
         num_rows_printed += self.print_horizontal_bar(columns)
-        num_rows_printed += self.print_centered(columns, self.name.upper())
+        num_rows_printed += self.display_screen_title(columns)
         num_rows_printed += self.print_horizontal_bar(columns)
         num_rows_printed += self.display_notifications(columns)
+        num_rows_printed += self.display_options_title(columns)
         num_rows_printed += self.display_all_options(columns)
         num_rows_printed += self.display_dismiss_option(columns)
         num_rows_printed += self.display_error_messages(columns)
@@ -414,7 +427,7 @@ class FriendsMenu(Menu):
             ConfirmRequestsMenu(self.user, pending_group_requests).start()
             return
         if self.current_option == 5: #displaying friends
-            friends = self.user.get_all_friends()
+            friends = self.user.get_friends()
             DisplayFriendsMenu(friends).start()
             return
 
@@ -430,19 +443,8 @@ class UserSearchResultsMenu(Menu):
         super(UserSearchResultsMenu, self).__init__(None, name, users)
 
     def process_selection(self):
-        pass
-
-class DisplayFriendsMenu(Menu):
-    def __init__(self, users):
-        if users == None or len(users) == 0:
-            name = "YOU HAVE NO FRIENDS!"
-            users = []
-        else:
-            name = "YOUR FRIENDS"
-        super(DisplayFriendsMenu, self).__init__(None, name, users)
-
-    def process_selection(self):
-        pass
+        if self.current_option < len(self.options):
+            DisplayProfileMenu(self.options[self.current_option]).start()
 
 class ConfirmRequestsMenu(Menu):
     def __init__(self, user, requests):
@@ -550,6 +552,46 @@ class ConfirmRequestsMenu(Menu):
             pass
 
         # TODO: CREATE FORM HERE
+
+class DisplayFriendsMenu(Menu):
+    def __init__(self, users):
+        if users == None or len(users) == 0:
+            name = "YOU HAVE NO FRIENDS!"
+            users = []
+        else:
+            name = "YOUR FRIENDS"
+        super(DisplayFriendsMenu, self).__init__(None, name, users)
+
+    def process_selection(self):
+        if self.current_option < len(self.options):
+            DisplayProfileMenu(self.options[self.current_option]).start()
+
+class DisplayProfileMenu(Menu):
+    def __init__(self, user):
+        full_name = user.f_name + " " + user.l_name
+        title =  full_name+ "'s PROFILE"
+        friends = user.get_friends(limit = 3)
+        if friends:
+            opt_title = user.f_name + "'s Friends"
+        else:
+            opt_title = full_name + " HAS NO FRIENDS!"
+        super(DisplayProfileMenu, self).__init__(user, title, friends, options_title = opt_title)
+
+
+    def display_screen_title(self, columns):
+        num_rows_printed = super(DisplayProfileMenu, self).display_screen_title(columns)
+        num_rows_printed += self.print_centered(columns, "~ " + self.user.user_id + " ~", highlight_color = IO.bcolors.HEADER)
+        num_rows_printed += self.print_centered(columns, self.user.email)
+        age = str(self.user.get_age()) + " years old"
+        num_rows_printed += self.print_centered(columns, age)
+        num_rows_printed += self.print_centered(columns, "Last active " + self.user.get_last_active())
+        return num_rows_printed
+
+
+    def process_selection(self):
+        if self.current_option < len(self.options):
+            DisplayProfileMenu(self.options[self.current_option]).start()
+
 
 
 # Abstract Class
