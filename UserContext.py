@@ -382,6 +382,18 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.DELETE_SUCCESS
 
+    # Deletes a pending group join request from user_id1 to group_id
+    def delete_group_join_request(self, user_id, group_id):
+        SQL = "DELETE FROM pendinggroupmembers WHERE userID = %s and gid = %s;"
+        data = (user_id, group_id)
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            return Status.DATABASE_ERROR
+        return Status.DELETE_SUCCESS
+
     # Inserts a friendship between user_id1 and user_id2, provided there is a
     # request from user_id1 to user_id2
     def create_friendship(self, user_id1, user_id2, message = None):
@@ -596,13 +608,27 @@ class User:
             return False
         return True
 
-    # Accepts a group join request from user_id for the group group_id. Returns True if successful, false otherwise.
+    # Deletes a friend request from user_id. Returns True if successful, false otherwise.
+    def delete_friend_request_from(self, user_id):
+        if not self.db_helper.delete_friend_request(user_id, self.user_id) == Status.DELETE_SUCCESS:
+            return False
+        return True
+
+    # Accepts a group join request from user_id for the group group_id.
+    # Returns True if successful, false otherwise.
     def accept_group_join_request_from(self, user_id, group_id):
         if not self.db_helper.check_is_group_manager(self.user_id, group_id):
-            print(1)
             return False
         if not self.db_helper.add_group_member(user_id, group_id) == Status.INSERT_SUCCESS:
-            print(2)
+            return False
+        return True
+
+    # Deletes a group join request from user_id for the group group_id.
+    # Returns True if successful, false otherwise.
+    def delete_group_join_request_from(self, user_id, group_id):
+        if not self.db_helper.check_is_group_manager(self.user_id, group_id):
+            return False
+        if not self.db_helper.delete_group_join_request(user_id, group_id) == Status.DELETE_SUCCESS:
             return False
         return True
 

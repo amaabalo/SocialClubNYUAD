@@ -447,7 +447,7 @@ class ConfirmRequestsMenu(Menu):
 
     def accept_all_requests(self):
         if (len(self.options) <= 2):
-            self.add_error("No more request to accept.")
+            self.add_error("No more requests to accept.")
             return
         to_delete = []
         for i in range(len(self.options) - 2):
@@ -465,12 +465,13 @@ class ConfirmRequestsMenu(Menu):
 
         for req in to_delete:
             self.options.remove(req)
+            self.no_options -= 1
+            self.current_option %= self.no_options
 
         notification = "Accepted all requests"
         if len(self.options) > 2:
             notification += ". Any remaining requests could not be accepted due to errors"
-            if (self.options
-            [0].group_id):
+            if (self.options[0].group_id):
                 notification += " or full groups"
         notification += "."
         self.add_notification(notification)
@@ -492,6 +493,34 @@ class ConfirmRequestsMenu(Menu):
         else:
             self.add_error("Could not accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
 
+    def delete_all_requests(self):
+        if (len(self.options) <= 2):
+            self.add_error("No more requests to delete.")
+            return
+        to_delete = []
+        for i in range(len(self.options) - 2):
+            request = self.options[i]
+            if (request.group_id): # a group request
+                res = self.user.delete_group_join_request_from(request.requester_id, request.group_id)
+            else:
+                res = self.user.delete_friend_request_from(request.requester_id)
+            if res:
+                to_delete.append(request)
+            else:
+                self.add_error("Could not delete request from " + request.requester_f_name + " " + request.requester_l_name + ".")
+
+        for req in to_delete:
+            self.options.remove(req)
+            self.no_options -= 1
+            self.current_option %= self.no_options
+
+        notification = "Deleted all requests"
+        if len(self.options) > 2:
+            notification += ". Any remaining requests could not be deleted due to errors"
+        notification += "."
+        self.add_notification(notification)
+
+
     def process_selection(self):
         if self.current_option < len(self.options) - 2:
             self.accept_request(self.current_option)
@@ -500,7 +529,7 @@ class ConfirmRequestsMenu(Menu):
             self.accept_all_requests()
             return
         if self.current_option == len(self.options) - 1: #delete all
-            self.add_notification("Deleted all requests.")
+            self.delete_all_requests()
             pass
 
         # TODO: CREATE FORM HERE
@@ -956,6 +985,10 @@ class WhichGroupForm(Form):
 
         if self.db_helper.check_has_pending_join_request_from(self.responses[0], self.user.user_id):
             self.add_error("You already have already requested to join " + group_name + ".")
+            return False
+
+        if self.db_helper.check_group_limit_reached(self.responses[0]):
+            self.add_error("Sorry, this group's limit has been reached. :(")
             return False
 
         return True
