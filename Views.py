@@ -413,6 +413,11 @@ class FriendsMenu(Menu):
             pending_group_requests = self.user.get_pending_group_join_requests()
             ConfirmRequestsMenu(self.user, pending_group_requests).start()
             return
+        if self.current_option == 5: #displaying friends
+            friends = self.user.get_all_friends()
+            DisplayFriendsMenu(friends).start()
+            return
+
 
 
 class UserSearchResultsMenu(Menu):
@@ -423,6 +428,18 @@ class UserSearchResultsMenu(Menu):
         else:
             name = "SEARCH RESULTS"
         super(UserSearchResultsMenu, self).__init__(None, name, users)
+
+    def process_selection(self):
+        pass
+
+class DisplayFriendsMenu(Menu):
+    def __init__(self, users):
+        if users == None or len(users) == 0:
+            name = "YOU HAVE NO FRIENDS!"
+            users = []
+        else:
+            name = "YOUR FRIENDS"
+        super(DisplayFriendsMenu, self).__init__(None, name, users)
 
     def process_selection(self):
         pass

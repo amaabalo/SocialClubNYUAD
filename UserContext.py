@@ -236,6 +236,19 @@ class DatabaseHelper:
             return False
         return True
 
+    # Returns all friends of the user_id
+    def get_all_friends(self, user_id):
+        SQL = "WITH a AS (SELECT userid1 as friendid FROM friends WHERE userid2 = %s),\
+                    b AS (SELECT userid2 as friendid FROM friends WHERE userid1 = %s),\
+                    c AS (SELECT * FROM a UNION SELECT * FROM b)\
+               SELECT userid, fname, lname, email, '', dob, '' FROM c JOIN profile ON c.friendid = profile.userid;"
+        data = (user_id, user_id)
+        self.cur.execute(SQL, data)
+        results = self.cur.fetchall()
+        if not results:
+            return None
+        return self.profile_records_to_dictionaries(results)
+
     # returns None if there is no corresponding name
     def get_names_from_user_id(self, user_id):
         SQL = "SELECT fname, lname FROM profile WHERE userID = %s"
@@ -539,11 +552,12 @@ class Request:
 
 class User:
 
-    def __init__(self, user_id = '', f_name = '', l_name = '', email = ''):
+    def __init__(self, user_id = '', f_name = '', l_name = '', email = '', dob = ''):
         self.user_id = user_id
         self.f_name = f_name
         self.l_name = l_name
         self.email = email
+        self.dob = dob
         self.logged_in = False
         self.db_helper = DatabaseHelper.get_instance()
 
@@ -632,6 +646,9 @@ class User:
             return False
         return True
 
+    def get_all_friends(self):
+        return User.get_user_objects(self.db_helper.get_all_friends(self.user_id))
+
 
     # Given a list of dictionaries of user profiles,
     # returns a list of User objects with the user_id, f_name, l_name, email attributes set.
@@ -640,4 +657,5 @@ class User:
         if not profiles:
             return []
         return list(map(lambda profile : User(user_id = profile["userID"],
-                        f_name = profile["fname"], l_name = profile["lname"], email = profile["email"]), profiles))
+                        f_name = profile["fname"], l_name = profile["lname"],
+                        email = profile["email"], dob = profile["DOB"]), profiles))
