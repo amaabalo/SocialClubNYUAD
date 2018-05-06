@@ -569,8 +569,125 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
         return Status.UPDATE_SUCCESS
 
+	#given the user-IDs of two users A and B, find if there exists a path between these two users  with at most 3 hops between  the  two  users
+    def three_degrees(self, user_id1, user_id2):
+        uid1 = str(user_id1)
+        uid2 = str(user_id2)
 
+		#hops are repeated, e.g. uid1 -> uid2 -> uid1, but all of these are a maximum of 3 hops away, so doesn't matter
+        SQL = "WITH friends_both_directions AS ((SELECT userID1, userID2 FROM friends) UNION (SELECT userID2, userID1 FROM friends)),\
+                        three_hops AS (SELECT * FROM friends NATURAL JOIN (SELECT userID1 as userID2, userID2 as userID3 FROM friends_both_directions) as fbd1 NATURAL JOIN (SELECT userID1 as userID3, userID2 as userID4 FROM friends_both_directions) as fbd2 WHERE friends.userID1 = %s )\
+               SELECT * from three_hops WHERE userID2 = %s OR userID3 = %s OR userID4 = %s;" 
 
+        data = (user_id1, user_id2, user_id2, user_id2)
+        try:
+			self.cur.execute(SQL,data)
+        except psycopg2.IntegrityError:
+            return Status.DATABASE_ERROR
+
+        results = self.cur.fetchall()
+        if not results:
+            return False
+            #return Status.REQUEST_NONEXISTENT
+        else:
+            return True
+
+	# display the top-k users  who  have  sent  or  received  the  highest  number  of  messages during the last x days
+    def topUsers(self, k, x):
+        ks = str(k)
+        xs = str(x)+" days"
+        #MESSAGES SENT = messages.fromUserID, MESSAGES RECEIVED = messages.toUserID + messageRecipient.toUserID
+        #FIX - ADD USER DETAILS, e.g. NAME
+        SQL = "SELECT userID, count(userID) as counts FROM ((SELECT fromUserID as userID, dateSent FROM messages) UNION (SELECT toUserID as userID, dateSent FROM messages)\
+               UNION (SELECT messageRecipient.toUserID as userID, dateSent FROM messages INNER JOIN messageRecipient USING (msgID))) AS db1\
+               WHERE dateSent > CURRENT_DATE-INTERVAL %s\
+               GROUP BY userID\
+               ORDER BY counts DESC\
+               LIMIT %s;"
+
+        data = (xs, ks)
+        try:
+			self.cur.execute(SQL,data)
+        except psycopg2.IntegrityError:
+            return Status.DATABASE_ERROR
+
+        results = self.cur.fetchall()
+        if not results:
+            return Status.REQUEST_NONEXISTENT
+        else:
+            return results
+
+    def send_group_message_to(self, user_id, group_id, message):
+        user_ids = str(user_id)
+        group_ids = str(group_id)
+        messages = str(message)
+
+        SQL = "INSERT INTO messages(fromUserID, toGroupID, message) SELECT %s as fromUserID, %s as toGroupID, %s as message FROM groupMembership WHERE groupMembership.gID = %s AND groupMembership.userID = %s;"
+        data = (user_ids, group_ids, messages, group_ids, user_ids)
+
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            #return Status.DATABASE_ERROR
+            return False
+
+        results = self.cur.rowcount
+        return results
+        #return Status.INSERT_SUCCESS
+  
+	#when a user selects this option, all contents of his/her messages should be displayed
+    def display_messages(self, userID):
+        userIDs = str(userID)
+        SQL = "SELECT * FROM messages WHERE messages.fromUserID = %s OR messages.toUserID = %s OR messages.msgID IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s);"
+        data = (userID, userID, userID)
+        try:
+			self.cur.execute(SQL,data)
+        except psycopg2.IntegrityError:
+            return Status.DATABASE_ERROR
+
+        results = self.cur.fetchall()
+        if not results:
+            return Status.REQUEST_NONEXISTENT
+        else:
+            return results
+
+	#same as display_messages, but only the messages since last login should be displayed
+    def display_new_messages(self, userID):
+        userIDs = str(userID)
+        SQL = "SELECT * FROM messages WHERE (messages.fromUserID = %s OR messages.toUserID = %s OR messages.msgID IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s)) AND messages.dateSent > (SELECT lastlogin FROM profile WHERE userID = %s);"
+
+        data = (userID, userID, userID, userID)
+        try:
+			self.cur.execute(SQL,data)
+        except psycopg2.IntegrityError:
+            return Status.DATABASE_ERROR
+
+        results = self.cur.fetchall()
+        if not results:
+            return Status.REQUEST_NONEXISTENT
+        else:
+            return results
+
+    def drop_user(self, user_id):
+        user_ids = str(user_id)
+        SQL = "DELETE FROM profile WHERE userID = %s;"
+        data = (user_ids,)
+
+        try:
+			self.cur.execute(SQL,data)
+			self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            #return Status.DATABASE_ERROR
+            return False
+
+        results = self.cur.rowcount
+        return results
+
+    def logout(self):
+        return
 
 class Request:
 
@@ -631,12 +748,12 @@ class User:
         self.email = result["email"]
         self.lastlogin = result["lastlogin"]
         self.logged_in = True
-        ts = time.time()
-        lastlogin = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-        self.db_helper.update_last_login(self.user_id, lastlogin)
         return Status.LOGIN_SUCCESS
 
     def log_out(self):
+        ts = time.time()
+        lastlogin = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+        self.db_helper.update_last_login(self.user_id, lastlogin)
         self.user_id = ''
         self.f_name = ''
         self.l_name = ''

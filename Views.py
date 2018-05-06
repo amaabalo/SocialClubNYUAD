@@ -362,15 +362,50 @@ class HomeMenu(Menu):
             friends_menu = FriendsMenu(self.user)
             friends_menu.start()
             return
-        if self.current_option == 1: #Messaging
+        elif self.current_option == 1: #Messaging
             MessagingMenu(self.user).start()
             return
+        elif self.current_option == 2: #Analytics
+			AnalyticsMenu(self.user).start()
+			return
         elif (self.current_option == 3):
             self.user.log_out()
             self.dismissed = True
+        elif (self.current_option == 4):
+            db_helper = DatabaseHelper.get_instance()
+            db_result = db_helper.drop_user(self.user.user_id)
+            self.user.log_out()
+            self.dismissed = True
+
+class AnalyticsMenu(Menu):
+	def __init__(self, user):
+		super(AnalyticsMenu, self).__init__(user, "Analytics",\
+											["3Degrees",\
+											 "Top k users for past x days"],\
+											 True)
+		self.db_helper = DatabaseHelper.get_instance()
+
+	def process_selection(self):
+		if self.current_option == 0: #3degrees
+			res = SearchFor3DegreesForm().get_responses()
+			if res == None:
+				return
+			user1, user2 = res
+			db_helper = DatabaseHelper.get_instance()
+			db_result = db_helper.three_degrees(user1, user2)
+			
+			self.add_notification("Result: "+str(db_result))
+		elif self.current_option == 1: #Top-k
+			res = SearchForTopKForm().get_responses()
+			if res == None:
+				return
+			user1, user2 = res
+			db_helper = DatabaseHelper.get_instance()
+			db_result = db_helper.topUsers(user1, user2)
+			self.add_notification("Result: "+str(db_result))
+			return
 
 class FriendsMenu(Menu):
-
     def __init__(self, user):
         super(FriendsMenu, self).__init__(user, "Friends",\
                                           ["Search for someone",\
@@ -451,7 +486,9 @@ class MessagingMenu(Menu):
     def __init__(self, user):
         super(MessagingMenu, self).__init__(user, "Messaging",\
                                           ["Message a Friend",\
-                                          "Message a Group"],\
+                                          "Message a Group",\
+										  "Display New Messages",\
+										  "Display Messages"],\
                                           dismissable = True)
     def process_selection(self):
         if self.current_option == 0: # Message a friend
@@ -468,9 +505,27 @@ class MessagingMenu(Menu):
             else:
                 self.add_notification("Success! Your message to " + recipient.f_name + " " + recipient.l_name + " has been sent.")
             return
-        if self.current_option == 1: # Message a group
-            pass
-
+        elif self.current_option == 1: # Message a group
+			res = MessageGroupForm().get_responses()
+			if res == None:
+				return
+			groupID, message = res
+			db_helper = DatabaseHelper.get_instance()
+			db_result = db_helper.send_group_message_to(self.user.user_id, groupID, message)
+			#db_result = db_helper.display_new_messages(user1)
+			#db_result = db_helper.drop_user(user1)
+			self.add_notification("Result: "+str(db_result))
+			return
+        elif self.current_option == 2: # Display New Messages
+			db_helper = DatabaseHelper.get_instance()
+			db_result = db_helper.display_new_messages(self.user.user_id)
+			self.add_notification("Result: "+str(db_result))
+			return
+        elif self.current_option == 3: # Display All Messages
+			db_helper = DatabaseHelper.get_instance()
+			db_result = db_helper.display_messages(self.user.user_id)
+			self.add_notification("Result: "+str(db_result))
+			return
 
 class SelectRecipientMenu(Menu):
     def __init__(self, friends):
@@ -491,9 +546,6 @@ class SelectRecipientMenu(Menu):
         if self.current_option < len(self.options):
             self.last_selection = self.options[self.current_option]
             self.dismissed = True
-
-
-
 
 class UserSearchResultsMenu(Menu):
     def __init__(self, users):
@@ -665,7 +717,7 @@ class Form(object):
     # submit = String to be displayed for submit button
     # multiline_fields = List of indices of fields which will be multilined, all others will be single lined
     # hidden_fields = List of indices of fields whose responses should be hidden
-    # defaults = a dictionary of default values to be used for each field, e.g. {0 : "Add me as a friend!", 5: "Abu Dhabi" }
+	# defaults = a dictionary of default values to be used for each field, e.g. {0 : "Add me as a friend!", 5: "Abu Dhabi" }
     def __init__(self, name, fields, submit, multiline_fields = None, hidden_fields = None, defaults = None):
         self.name = name
         self.fields = fields
@@ -1188,3 +1240,37 @@ class SendMessageForm(Form):
 
     def validate(self):
         return self.validate_against_schema(self.associated_table, self.attribute_field_map)
+
+
+class SearchFor3DegreesForm(Form):
+    def __init__(self):
+        super(SearchFor3DegreesForm, self).__init__("SEARCH FOR 3-Degrees", ["userID1", "userID2"], "Search")
+
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+        return True
+
+class SearchForTopKForm(Form):
+    def __init__(self):
+        super(SearchForTopKForm, self).__init__("SEARCH FOR TOP K USERS", ["Number of users", "Past number of days"], "Search")
+
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+        return True
+
+class MessageGroupForm(Form):
+    def __init__(self):
+        super(MessageGroupForm, self).__init__("MESSAGE GROUP FORM", ["Group ID", "Message"], "Send Message")
+
+    def validate(self):
+        for i,field in enumerate(self.fields):
+            if self.responses[i] == '':
+                self.add_error("'" + field + "' cannot be empty.")
+                return False
+        return True
