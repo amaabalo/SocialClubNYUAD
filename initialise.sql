@@ -50,16 +50,15 @@ CREATE TABLE groups(
 /* Handle message deletion when user is deleted in profile*/
 CREATE TABLE messages (
 	msgID SERIAL NOT NULL,
-	fromUserID varchar(20) NOT NULL,
+	fromUserID varchar(20),
 	toUserID varchar(20) DEFAULT NULL,
 	toGroupID varchar(20) DEFAULT NULL,
 	message varchar(200) NOT NULL,
 	dateSent timestamp DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (msgID),
-	FOREIGN KEY (fromUserID) REFERENCES profile,
-	FOREIGN KEY (toUserID) REFERENCES profile,
-	FOREIGN KEY (toGroupID) REFERENCES groups,
-	CHECK ((toUserID IS NOT NULL AND toGroupID IS NULL) OR (toUserID IS NULL AND toGroupID IS NOT NULL)),
+	FOREIGN KEY (fromUserID) REFERENCES profile ON DELETE SET NULL,
+	FOREIGN KEY (toUserID) REFERENCES profile ON DELETE SET NULL,
+	FOREIGN KEY (toGroupID) REFERENCES groups ON DELETE SET NULL,
 	CHECK (dateSent <= CURRENT_TIMESTAMP)
 );
 
@@ -67,7 +66,7 @@ CREATE TABLE messageRecipient (
 	msgID integer,
 	toUserID varchar(20) NOT NULL,
 	PRIMARY KEY (msgID, toUserID),
-	FOREIGN KEY (msgID) REFERENCES messages,
+	FOREIGN KEY (msgID) REFERENCES messages ON DELETE CASCADE,
 	FOREIGN KEY (toUserID) REFERENCES profile ON DELETE CASCADE
 );
 
@@ -101,6 +100,11 @@ DROP FUNCTION IF EXISTS pending_friend();
 DROP TRIGGER IF EXISTS pending_friend ON pendingFriends;
 DROP FUNCTION IF EXISTS reverse_friend();
 DROP TRIGGER IF EXISTS reverse_friend ON friends;
+DROP FUNCTION IF EXISTS delete_groups();
+DROP TRIGGER IF EXISTS delete_groups ON groupMembership;
+DROP FUNCTION IF EXISTS delete_messages();
+DROP TRIGGER IF EXISTS delete_messages ON profile;
+DROP TRIGGER IF EXISTS delete_messages ON groups;
 
 /*number of members in a group should be less than or equal to limit*/
 CREATE FUNCTION group_lmt() RETURNS trigger AS $group_lmt$
@@ -131,9 +135,21 @@ $pending_group_lmt$ LANGUAGE plpgsql;
 CREATE TRIGGER pending_group_lmt BEFORE INSERT OR UPDATE ON pendingGroupMembers
 	FOR EACH ROW EXECUTE PROCEDURE pending_group_lmt();
 
-/*add message recipient when message is added*/
+/*add message recipient when message is added, also check constraints are satisfied*/
+/* CHECK ((toUserID IS NOT NULL AND toGroupID IS NULL) OR (toUserID IS NULL AND toGroupID IS NOT NULL)) */
+/* CHECK (fromUserID IS NOT NULL) */
 CREATE FUNCTION add_msg_recipients() RETURNS trigger AS $add_msg_recipients$
 	BEGIN
+		IF NEW.fromUserID IS NULL THEN
+			RAISE EXCEPTION 'fromUserID cannot be NULL';
+		END IF;
+		IF NEW.toUserID IS NULL AND NEW.toGroupID IS NULL THEN
+			RAISE EXCEPTION 'toUserID and toGroupID cannot both be NULL, recipient is needed for a message';
+		END IF;
+		IF (NEW.toUserID IS NOT NULL) AND (NEW.toGroupID IS NOT NULL) THEN
+			RAISE EXCEPTION 'either toUserID or toGroupID must be NULL, cannot have multiple recipient types';
+		END IF;
+
 		IF NEW.toUserID IS NOT NULL THEN
 			INSERT INTO messageRecipient VALUES (NEW.msgID, NEW.toUserID);
 		END IF;
@@ -178,3 +194,30 @@ $reverse_friend$ LANGUAGE plpgsql;
 
 CREATE TRIGGER reverse_friend BEFORE INSERT ON friends
 	FOR EACH ROW EXECUTE PROCEDURE reverse_friend();
+
+/*delete groups if no manager left*/
+CREATE FUNCTION delete_groups() RETURNS trigger AS $delete_groups$
+	BEGIN
+		IF (SELECT count(userID) FROM groupMembership WHERE gID = OLD.gID AND role='manager') = 0 THEN
+			DELETE FROM groups WHERE gID = OLD.gID;
+		END IF;
+		RETURN OLD;
+	END;
+$delete_groups$ LANGUAGE plpgsql;
+
+CREATE TRIGGER delete_groups AFTER DELETE ON groupMembership
+	FOR EACH ROW EXECUTE PROCEDURE delete_groups();
+
+/*delete messages if no owning resources left*/
+CREATE FUNCTION delete_messages() RETURNS trigger AS $delete_messages$
+	BEGIN
+		DELETE FROM messages WHERE messages.toUserID is NULL AND messages.fromUserID is NULL AND messages.toGroupID is NULL;
+		RETURN NULL;
+	END;
+$delete_messages$ LANGUAGE plpgsql;
+
+CREATE TRIGGER delete_messages AFTER DELETE ON profile
+	FOR EACH ROW EXECUTE PROCEDURE delete_messages();
+
+CREATE TRIGGER delete_messages_groups AFTER DELETE ON groups
+	FOR EACH ROW EXECUTE PROCEDURE delete_messages();
