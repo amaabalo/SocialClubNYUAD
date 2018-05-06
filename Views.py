@@ -23,6 +23,7 @@ class Menu(object):
         self.name = name
         self.options = options
         self.current_option = 0
+        self.last_start = 0
         self.dismissable = dismissable
         self.no_options = len(self.options) + 1 if self.dismissable else len(self.options)
         self.cancel = "CANCEL"
@@ -33,22 +34,27 @@ class Menu(object):
         self.options_title = options_title
         self.pointer = u'\u25b8'
         self.cursor = u'\u258d'
+        self.down_arrow = u'\u25bc'
+        self.last_window = self.get_initial_display_window()
 
 
-    def print_horizontal_bar(self, columns):
-        print('#' * columns)
+    def print_horizontal_bar(self, columns, show = True):
+        if show:
+            print('#' * columns)
         return 1
 
-    def print_centered(self, columns, string, highlight_color = None):
+    def print_centered(self, columns, string, highlight_color = None, show = True):
         n_spaces = (columns - 2 - len(string))/2
         remainder = (columns - 2 - len(string))%2
         if highlight_color:
-            print('#' + ' ' * n_spaces + highlight_color + string + IO.bcolors.ENDC + ' ' * (n_spaces + remainder) + "#")
+            if show:
+                print('#' + ' ' * n_spaces + highlight_color + string + IO.bcolors.ENDC + ' ' * (n_spaces + remainder) + "#")
         else:
-            print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
+            if show:
+                print('#' + ' ' * n_spaces + string + ' ' * (n_spaces + remainder) + "#")
         return 1
 
-    def print_with_indent(self, indentation, text):
+    def print_with_indent(self, indentation, text, show = True):
             if (text == ''):
                 return 0
             if (text[0] == '\n'):
@@ -64,7 +70,8 @@ class Menu(object):
                     line_to_print += line[0:text_width]
                     n_spaces = columns - len(line_to_print) - 2
                     line_to_print += (" " * n_spaces) + " #"
-                    print(line_to_print)
+                    if show:
+                        print(line_to_print)
                     n_lines_printed += 1
                     line = line[text_width:]
                     if (line == ''):
@@ -74,7 +81,7 @@ class Menu(object):
 
     def print_multiline(self, columns, field, text, highlighted, bulleted,
                             editing, highlight_color = IO.bcolors.OKBLUE,
-                            bullet = None, separator = ": "):
+                            bullet = None, separator = ": ", show = True):
             n_lines_printed = 0
             if (bullet == None):
                 bullet = self.pointer
@@ -109,20 +116,22 @@ class Menu(object):
                 n_spaces += (len(highlight_color) + len(IO.bcolors.ENDC))
             line += ' ' * n_spaces
             line += " #"
-            print(line)
+            if show:
+                print(line)
             n_lines_printed += 1
             text = text[stop : ]
-            n_lines_printed += self.print_with_indent(indentation, text)
+            n_lines_printed += self.print_with_indent(indentation, text, show = show)
             return n_lines_printed
 
 
-    def print_empty_space(self, columns):
-        print('#' + " "*(columns - 2) + '#')
+    def print_empty_space(self, columns, show = True):
+        if show:
+            print('#' + " "*(columns - 2) + '#')
         return 1
 
     def print_single_line(self, columns, field, text, highlighted, bulleted,
                               editing, highlight_color = IO.bcolors.OKBLUE,
-                              bullet = None, separator = ": "):
+                              bullet = None, separator = ": ", show = True):
 
             if (bullet == None):
                 bullet = self.pointer
@@ -144,7 +153,8 @@ class Menu(object):
                 text_to_print = text[0: (cols_available_for_response)]
 
             n_spaces = cols_available_for_response - len(text_to_print)
-            print(start + text_to_print + ' ' * (n_spaces) + " #")
+            if show:
+                print(start + text_to_print + ' ' * (n_spaces) + " #")
 
             return 1
 
@@ -155,100 +165,200 @@ class Menu(object):
             columns = int(columns)
             return (rows, columns)
 
-    def display_notification (self, columns, error_message):
+    def display_notification (self, columns, error_message, show = True):
         return self.print_multiline(columns, "NOTIFICATION", error_message, True, False,
-                                    False, highlight_color = IO.bcolors.OKBLUE)
+                                    False, highlight_color = IO.bcolors.OKBLUE, show = show)
 
-    def display_notifications(self, columns):
+    def display_notifications(self, columns, show = True):
         n_rows_printed = 0
         if self.notifications:
-            n_rows_printed = self.print_empty_space(columns)
+            n_rows_printed = self.print_empty_space(columns, show = show)
         for notification in self.notifications:
-            n_rows_printed += self.display_notification(columns, notification)
+            n_rows_printed += self.display_notification(columns, notification, show = show)
         if self.notifications:
-            n_rows_printed += self.print_empty_space(columns)
-            n_rows_printed += self.print_horizontal_bar(columns)
+            n_rows_printed += self.print_empty_space(columns, show = show)
+            n_rows_printed += self.print_horizontal_bar(columns, show = show)
         return n_rows_printed
 
-    def display_string_option(self, columns, option, selected):
-        return self.print_single_line(columns, option, '', selected, selected, False, separator = '')
+    def display_string_option(self, columns, option, selected, show = True):
+        return self.print_single_line(columns, option, '', selected, selected, False, separator = '', show = show)
 
-    def display_user_instance(self, columns, user, selected):
+    def display_user_instance(self, columns, user, selected, show = True):
         n_rows_printed = 0
         # print the name
         name = (user.f_name + " " +  user.l_name).upper() + " ~ " + user.user_id + " ~ "
-        n_rows_printed += self.print_single_line(columns, name, '', selected, selected, False, separator = '')
+        n_rows_printed += self.print_single_line(columns, name, '', selected, selected, False, separator = '', show = show)
         # print username and email address
         #n_rows_printed += self.print_single_line(columns, "Username", user.user_id, False, False, False)
-        n_rows_printed += self.print_single_line(columns, "Email", user.email, False, False, False)
-        n_rows_printed += self.print_empty_space(columns)
+        n_rows_printed += self.print_single_line(columns, "Email", user.email, False, False, False, show = show)
+        n_rows_printed += self.print_empty_space(columns, show = show)
         return n_rows_printed
 
-    def display_request_instance(self, columns, request, selected):
+    def display_request_instance(self, columns, request, selected, show = True):
         n_rows_printed = 0
         # print the name and message
         title = (request.requester_f_name + " " +  request.requester_l_name).upper()
         if request.group_id:
             title += " wants to join " + request.group_name
-        n_rows_printed += self.print_multiline(columns, title, request.message, selected, selected, False)
-        n_rows_printed += self.print_empty_space(columns)
+        n_rows_printed += self.print_multiline(columns, title, request.message, selected, selected, False, show = show)
+        n_rows_printed += self.print_empty_space(columns, show = show)
         return n_rows_printed
 
-    def display_all_options(self, columns):
+    def display_all_options(self, columns, show = True):
         n_rows_printed = 0
         for i, option in enumerate(self.options):
             selected = i == self.current_option
             if (isinstance(option, str)):
-                n_rows_printed += self.display_string_option(columns, option, selected)
+                n_rows_printed += self.display_string_option(columns, option, selected, show = show)
             elif (isinstance(option, User)):
-                n_rows_printed += self.display_user_instance(columns, option, selected)
+                n_rows_printed += self.display_user_instance(columns, option, selected, show = show)
             elif (isinstance(option, Request)):
-                n_rows_printed += self.display_request_instance(columns, option, selected)
+                n_rows_printed += self.display_request_instance(columns, option, selected, show = show)
         return n_rows_printed
 
-
-    def display_string_options(self, columns):
-        for i, option in enumerate(self.options):
-            n_spaces = (columns - 3 - len(option))
-            if (i == self.current_option):
-                print('#' + u'\u25b8' + IO.bcolors.OKBLUE + option + IO.bcolors.ENDC + ' ' * (n_spaces) + "#")
-            else:
-                print('#' + ' ' + option + ' ' * (n_spaces) + "#")
-
-    def display_dismiss_option(self, columns):
+    def display_dismiss_option(self, columns, show = True):
         if (self.dismissable):
             return self.print_single_line(columns, self.cancel, '', self.current_option == len(self.options),
                                         self.current_option == len(self.options),
-                                        False, highlight_color = IO.bcolors.FAIL, separator = '')
+                                        False, highlight_color = IO.bcolors.FAIL, separator = '', show = show)
         return 0
 
-    def display_error_message (self, columns, error_message):
+    def display_error_message (self, columns, error_message, show = True):
             return self.print_multiline(columns, "Error", error_message, True, False,
-                                        False, highlight_color = IO.bcolors.FAIL)
+                                        False, highlight_color = IO.bcolors.FAIL, show = show)
 
-    def display_error_messages(self, columns):
-        n_rows_printed = self.print_empty_space(columns)
+    def display_error_messages(self, columns, show = True):
+        n_rows_printed = 0
+        if self.error_messages:
+            n_rows_printed += self.print_empty_space(columns, show = show)
         for error_message in self.error_messages:
-            n_rows_printed += self.display_error_message(columns, error_message)
+            n_rows_printed += self.display_error_message(columns, error_message, show = show)
         return n_rows_printed
 
-
-    def fill_empty_space(self, rows, columns, num_rows_printed):
+    def fill_empty_space(self, rows, columns, num_rows_printed, show = True):
         remainder = num_rows_printed % (rows - 1)
-        to_fill = (rows - 1) - remainder
+        if not remainder:
+            to_fill = 0
+        else:
+            to_fill = (rows - 1) - remainder
         num_rows_printed = 0
         for i in range(to_fill - 1):
-            num_rows_printed += self.print_empty_space(columns)
-        num_rows_printed += self.print_horizontal_bar(columns)
+            num_rows_printed += self.print_empty_space(columns, show = show)
+        num_rows_printed += self.print_horizontal_bar(columns, show = show)
         return num_rows_printed
 
-    def display_screen_title(self, columns):
-        return self.print_centered(columns, self.name.upper())
+    def display_screen_title(self, columns, show = True):
+        return self.print_centered(columns, self.name.upper(), show = show)
 
-    def display_options_title(self, columns):
+    def display_options_title(self, columns, show = True):
         if self.options_title:
-            return self.print_centered(columns, self.options_title)
+            return self.print_centered(columns, self.options_title, show = show)
         return 0
+
+    def get_bottom_range(self, current_option, option_heights, rows_available):
+        range_start = current_option + 1
+        range_end = current_option + 1
+
+        total_lines = 0
+        while (range_start > 0 and (total_lines + option_heights[range_start - 1] <= rows_available)):
+            total_lines += option_heights[range_start - 1]
+            range_start -= 1
+
+        if range_start == 0:
+            return self.get_initial_display_window()
+        return (range_start, range_end)
+
+
+    def display_all_options_(self, columns, rows_available, show = True):
+        current_option = self.current_option
+        if self.current_option >= len(self.options):
+            current_option = len(self.options) - 1
+
+        range_start, range_end = self.last_window
+        #print(range_start, range_end)
+        if current_option in range(range_start, range_end):
+            # check if they still fit
+            option_heights = self.get_option_heights(columns, 0, len(self.options))
+            total_lines = sum(self.get_option_heights(columns, range_start, range_end))
+            if not total_lines <= rows_available:
+                range_start, range_end = self.get_bottom_range(current_option, option_heights, rows_available)
+            else: # maybe there's more space
+                while (range_end < len(self.options) and (total_lines + option_heights[range_end] <= rows_available)):
+                    total_lines += option_heights[range_end]
+                    range_end += 1
+                #print(1, range_start, range_end)
+        else:
+            #print(2, current_option, range_start, range_end)
+            option_heights = self.get_option_heights(columns, 0, len(self.options))
+            range_start, range_end = self.get_bottom_range(current_option, option_heights, rows_available)
+
+
+        n_rows_printed = 0
+        for i in range(range_start, range_end):
+            selected = i == self.current_option
+            option = self.options[i]
+            if (isinstance(option, str)):
+                n_rows_printed += self.display_string_option(columns, option, selected, show = show)
+            elif (isinstance(option, User)):
+                n_rows_printed += self.display_user_instance(columns, option, selected, show = show)
+            elif (isinstance(option, Request)):
+                n_rows_printed += self.display_request_instance(columns, option, selected, show = show)
+
+        self.last_window = (range_start, range_end)
+        return n_rows_printed
+
+    def get_option_heights(self, columns, start, end):
+        option_heights = []
+        for i in range(start, end):
+            selected = i == self.current_option
+            option = self.options[i]
+            if (isinstance(option, str)):
+                option_heights.append(self.display_string_option(columns, option, selected, show = False))
+            elif (isinstance(option, User)):
+                option_heights.append(self.display_user_instance(columns, option, selected, show = False))
+            elif (isinstance(option, Request)):
+                option_heights.append(self.display_request_instance(columns, option, selected, show = False))
+        return option_heights
+
+
+    def get_initial_display_window(self):
+        # in the beginning
+        rows, columns = self.get_rows_columns()
+        num_rows_printed = 0
+        num_rows_printed += self.print_horizontal_bar(columns,  show = False)
+        num_rows_printed += self.display_screen_title(columns, show = False)
+        num_rows_printed += self.print_horizontal_bar(columns,  show = False)
+        num_rows_printed += self.display_notifications(columns,  show = False)
+        num_rows_printed += self.display_options_title(columns,  show = False)
+
+        lines_after = self.display_dismiss_option(columns, show = False)
+        lines_after += self.display_error_messages(columns, show = False)
+        lines_after += 2
+
+        space_for_options = rows - num_rows_printed - lines_after
+
+        # get the number of rows occupied by each option
+        option_heights = []
+        for i, option in enumerate(self.options):
+            selected = i == self.current_option
+            if (isinstance(option, str)):
+                option_heights.append(self.display_string_option(columns, option, selected, show = False))
+            elif (isinstance(option, User)):
+                option_heights.append(self.display_user_instance(columns, option, selected, show = False))
+            elif (isinstance(option, Request)):
+                option_heights.append(self.display_request_instance(columns, option, selected, show = False))
+
+        range_start = 0
+        range_end = 0
+        total_lines = 0
+        while (range_end < len(self.options) and (total_lines + option_heights[range_end] <= space_for_options)):
+            total_lines += option_heights[range_end]
+            range_end += 1
+        return(range_start, range_end)
+
+
+
+
 
     def display(self):
         rows, columns = self.get_rows_columns()
@@ -258,10 +368,29 @@ class Menu(object):
         num_rows_printed += self.print_horizontal_bar(columns)
         num_rows_printed += self.display_notifications(columns)
         num_rows_printed += self.display_options_title(columns)
-        num_rows_printed += self.display_all_options(columns)
-        num_rows_printed += self.display_dismiss_option(columns)
-        num_rows_printed += self.display_error_messages(columns)
-        num_rows_printed += self.fill_empty_space(rows, columns, num_rows_printed)
+
+
+        lines_after = self.display_dismiss_option(columns, show = False)
+        lines_after += self.display_error_messages(columns, show = False)
+        lines_after += 2 # the bottom horizontal bar, and that "command line"
+
+        space_for_options = rows - num_rows_printed - lines_after
+        num_rows_printed += self.display_all_options_(columns, rows_available = space_for_options)
+        #num_rows_printed += self.display_all_options(columns, rows_available = space_for_options)
+        start, end = self.last_window
+        if end == len(self.options) or not self.options:
+            self.cancel = 'CANCEL'
+            n = self.display_dismiss_option(columns)
+            num_rows_printed += n
+        else:
+            self.cancel = self.down_arrow
+            n = self.display_dismiss_option(columns)
+            num_rows_printed += n
+
+        n = self.display_error_messages(columns)
+        num_rows_printed += n
+        #print(num_rows_printed)
+        self.fill_empty_space(rows, columns, num_rows_printed)
 
     # Use this to add an errror which will be displayed, e.g.
     # self.add_error("Username does not exist")
@@ -284,10 +413,12 @@ class Menu(object):
         while True:
             key = IO.get()
             if key == '\x1b[A' or key == '\x1b[D':
-                self.current_option = (self.current_option - 1) % self.no_options
+                #self.current_option = (self.current_option - 1) % self.no_options
+                self.current_option = max(0, self.current_option - 1)
                 break;
             elif key == '\x1b[B' or key == '\x1b[C' or key == '\t':
-                self.current_option = (self.current_option + 1) % self.no_options
+                #self.current_option = (self.current_option + 1) % self.no_options
+                self.current_option = min(self.no_options - 1, self.current_option + 1)
                 break;
             elif key == '\r':
                 self.process_selection_()
@@ -493,8 +624,6 @@ class SelectRecipientMenu(Menu):
             self.dismissed = True
 
 
-
-
 class UserSearchResultsMenu(Menu):
     def __init__(self, users):
         if users == None or len(users) == 0:
@@ -548,7 +677,8 @@ class ConfirmRequestsMenu(Menu):
             self.options.remove(req)
             self.no_options -= 1
             self.current_option %= self.no_options
-
+        self.current_option = 0
+        self.last_window = self.get_initial_display_window()
         notification = "Accepted all requests"
         if len(self.options) > 2:
             notification += ". Any remaining requests could not be accepted due to errors"
@@ -556,6 +686,7 @@ class ConfirmRequestsMenu(Menu):
                 notification += " or full groups"
         notification += "."
         self.add_notification(notification)
+
 
     def accept_request(self, current_option):
         request = self.options[current_option]
@@ -569,7 +700,10 @@ class ConfirmRequestsMenu(Menu):
         if res:
             request = self.options.pop(current_option)
             self.no_options -= 1
-            self.current_option %= self.no_options
+            #self.current_option %= self.no_options
+            if self.current_option >= len(self.options):
+                self.current_option -= max(0, self.current_option - 1)
+            self.last_window = (self.last_window[0], self.last_window[1] - 1)
             self.add_notification("Accepted request from " + request.requester_f_name + " " + request.requester_l_name + ".")
         else:
             self.add_error("Could not accept request from " + request.requester_f_name + " " + request.requester_l_name + ".")
@@ -595,6 +729,8 @@ class ConfirmRequestsMenu(Menu):
             self.no_options -= 1
             self.current_option %= self.no_options
 
+        self.current_option = 0
+        self.last_window = self.get_initial_display_window()
         notification = "Deleted all requests"
         if len(self.options) > 2:
             notification += ". Any remaining requests could not be deleted due to errors"
@@ -640,13 +776,13 @@ class DisplayProfileMenu(Menu):
         super(DisplayProfileMenu, self).__init__(user, title, friends, options_title = opt_title)
 
 
-    def display_screen_title(self, columns):
-        num_rows_printed = super(DisplayProfileMenu, self).display_screen_title(columns)
-        num_rows_printed += self.print_centered(columns, "~ " + self.user.user_id + " ~", highlight_color = IO.bcolors.HEADER)
-        num_rows_printed += self.print_centered(columns, self.user.email)
+    def display_screen_title(self, columns, show = True):
+        num_rows_printed = super(DisplayProfileMenu, self).display_screen_title(columns, show = show)
+        num_rows_printed += self.print_centered(columns, "~ " + self.user.user_id + " ~", highlight_color = IO.bcolors.HEADER, show = show)
+        num_rows_printed += self.print_centered(columns, self.user.email, show = show)
         age = str(self.user.get_age()) + " years old"
-        num_rows_printed += self.print_centered(columns, age)
-        num_rows_printed += self.print_centered(columns, "Last active " + self.user.get_last_active())
+        num_rows_printed += self.print_centered(columns, age, show = show)
+        num_rows_printed += self.print_centered(columns, "Last active " + self.user.get_last_active(), show = show)
         return num_rows_printed
 
 
