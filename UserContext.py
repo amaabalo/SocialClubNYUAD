@@ -161,6 +161,23 @@ class DatabaseHelper:
             rval.append(dict)
         return rval
 
+    # Turns a list of tuples from the message relation into a list of
+    # dictionaries whose keys are the attributes of the message relation and whose
+    # values are the contents of the tuples.
+    def message_records_to_dictionaries(self, results):
+        rval = []
+        for result in results:
+            dict = {}
+            dict["msgID"] = result[0]
+            dict["fromUserID"] = result[1] if result[1] else "[DELETED ACCOUNT]"
+            dict["toUserID"] = result[2]
+            dict["toGroupID"] = result[3]
+            dict["message"] = result[4].strip()
+            dict["dateSent"] = result[5]
+            rval.append(dict)
+        return rval
+
+
     # Turns a list of tuples of the form (userid2, userid1, fname, lname, message) into a list of
     # dictionaries whose keys are the attributes (userid2, userid1, fname, lname, message) and whose
     # values are the contents of the tuples. userid2 is the recipient of the request.
@@ -574,10 +591,15 @@ class DatabaseHelper:
         uid1 = str(user_id1)
         uid2 = str(user_id2)
 
+        # check for 1 hop:
+
+        # check for 2 hops:
+
+        #check for 3 hops;
 		#hops are repeated, e.g. uid1 -> uid2 -> uid1, but all of these are a maximum of 3 hops away, so doesn't matter
         SQL = "WITH friends_both_directions AS ((SELECT userID1, userID2 FROM friends) UNION (SELECT userID2, userID1 FROM friends)),\
                         three_hops AS (SELECT * FROM friends NATURAL JOIN (SELECT userID1 as userID2, userID2 as userID3 FROM friends_both_directions) as fbd1 NATURAL JOIN (SELECT userID1 as userID3, userID2 as userID4 FROM friends_both_directions) as fbd2 WHERE friends.userID1 = %s )\
-               SELECT * from three_hops WHERE userID2 = %s OR userID3 = %s OR userID4 = %s;" 
+               SELECT * from three_hops WHERE userID2 = %s OR userID3 = %s OR userID4 = %s;"
 
         data = (user_id1, user_id2, user_id2, user_id2)
         try:
@@ -598,12 +620,13 @@ class DatabaseHelper:
         xs = str(x)+" days"
         #MESSAGES SENT = messages.fromUserID, MESSAGES RECEIVED = messages.toUserID + messageRecipient.toUserID
         #FIX - ADD USER DETAILS, e.g. NAME
-        SQL = "SELECT userID, count(userID) as counts FROM ((SELECT fromUserID as userID, dateSent FROM messages) UNION (SELECT toUserID as userID, dateSent FROM messages)\
+        SQL = "WITH a AS (SELECT userID, count(userID) as counts FROM ((SELECT fromUserID as userID, dateSent FROM messages) UNION (SELECT toUserID as userID, dateSent FROM messages)\
                UNION (SELECT messageRecipient.toUserID as userID, dateSent FROM messages INNER JOIN messageRecipient USING (msgID))) AS db1\
                WHERE dateSent > CURRENT_DATE-INTERVAL %s\
                GROUP BY userID\
                ORDER BY counts DESC\
-               LIMIT %s;"
+               LIMIT %s)\
+               SELECT profile.* FROM a NATURAL JOIN profile;"
 
         data = (xs, ks)
         try:
@@ -612,10 +635,7 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
 
         results = self.cur.fetchall()
-        if not results:
-            return Status.REQUEST_NONEXISTENT
-        else:
-            return results
+        return User.get_user_objects(self.profile_records_to_dictionaries(results))
 
     def send_group_message_to(self, user_id, group_id, message):
         user_ids = str(user_id)
@@ -636,11 +656,13 @@ class DatabaseHelper:
         results = self.cur.rowcount
         return results
         #return Status.INSERT_SUCCESS
-  
-	#when a user selects this option, all contents of his/her messages should be displayed
+
+	#when a user selects this option, all contents of his/her messages should be returned
     def display_messages(self, userID):
         userIDs = str(userID)
-        SQL = "SELECT * FROM messages WHERE messages.fromUserID = %s OR messages.toUserID = %s OR messages.msgID IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s);"
+        SQL = "SELECT * FROM messages WHERE messages.fromUserID = %s OR messages.toUserID = %s OR\
+         messages.msgID IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s)\
+         ORDER BY dateSent DESC;"
         data = (userID, userID, userID)
         try:
 			self.cur.execute(SQL,data)
@@ -648,15 +670,15 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
 
         results = self.cur.fetchall()
-        if not results:
-            return Status.REQUEST_NONEXISTENT
-        else:
-            return results
+        return self.message_records_to_dictionaries(results)
 
 	#same as display_messages, but only the messages since last login should be displayed
     def display_new_messages(self, userID):
         userIDs = str(userID)
-        SQL = "SELECT * FROM messages WHERE (messages.fromUserID = %s OR messages.toUserID = %s OR messages.msgID IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s)) AND messages.dateSent > (SELECT lastlogin FROM profile WHERE userID = %s);"
+        SQL = "SELECT * FROM messages WHERE (messages.fromUserID = %s OR messages.toUserID = %s OR messages.msgID\
+               IN (SELECT msgID FROM messageRecipient WHERE toUserID = %s)) \
+               AND messages.dateSent > (SELECT lastlogin FROM profile WHERE userID = %s)\
+               ORDER BY dateSent DESC;"
 
         data = (userID, userID, userID, userID)
         try:
@@ -665,10 +687,7 @@ class DatabaseHelper:
             return Status.DATABASE_ERROR
 
         results = self.cur.fetchall()
-        if not results:
-            return Status.REQUEST_NONEXISTENT
-        else:
-            return results
+        return self.message_records_to_dictionaries(results)
 
     def drop_user(self, user_id):
         user_ids = str(user_id)
@@ -721,6 +740,25 @@ class Request:
                 lst.append(Request(request["userID2"], request["userID1"],
                                        request["fname"], request["lname"],
                                        request["message"]))
+        return lst
+
+class Message:
+    def __init__(self, sender_id, recipient_id, group_id, message, date):
+        self.sender_id = sender_id
+        self.recipient_id = recipient_id
+        self.group_id = group_id
+        self.message = message
+        self.date = date
+
+    # Given a list of dictionaries of join messages,
+    # returns a list of Message objects with the relevant attributes set.
+    @staticmethod
+    def get_message_objects(messages):
+        lst = []
+        if not messages:
+            return lst
+        for message in messages:
+            lst.append(Message(message["fromUserID"], message["toUserID"], message["toGroupID"], message["message"], message["dateSent"]))
         return lst
 
 
@@ -877,6 +915,13 @@ class User:
             return "just now"
         else:
             return str(minutes) + " minutes ago"
+
+
+    def get_messages(self):
+        return Message.get_message_objects(self.db_helper.display_messages(self.user_id))
+
+    def get_new_messages(self):
+        return Message.get_message_objects(self.db_helper.display_new_messages(self.user_id))
 
     # Given a list of dictionaries of user profiles,
     # returns a list of User objects with the user_id, f_name, l_name, email attributes set.

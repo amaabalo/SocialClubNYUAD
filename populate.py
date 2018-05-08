@@ -100,7 +100,7 @@ def insertGroups(n_groups, n_users):
 				userID = str(member)#.zfill(20)
 				cur.execute('INSERT INTO groupMembership(gID, userID, role) VALUES (%s, %s, %s)', (gID, userID, role))
 				conn.commit()
-			except psycopg2.IntegrityError:
+			except Exception:
 				conn.rollback()
 
 def insertMessages(n_users, n_groups, n_messages):
@@ -120,11 +120,11 @@ def insertMessages(n_users, n_groups, n_messages):
 
 		message = ''
 		msg_len = random.randint(1, 200)
-		selection = string.ascii_letters + string.digits + string.punctuation+string.whitespace
+		selection = string.ascii_letters + string.digits + ' ' + '\n'
 		for j in range(msg_len):
 			message = message + random.choice(selection)
 
-		ts = random.uniform(0,1)*time.time()
+		ts = random.uniform(0.80,1)*time.time()
 		date = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 
 		if(gID == 'NULL'):

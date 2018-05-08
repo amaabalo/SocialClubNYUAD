@@ -3,7 +3,7 @@ import IO
 import string
 import sys
 from abc import ABCMeta, abstractmethod
-from UserContext import User, Status, DatabaseHelper, Request
+from UserContext import User, Status, DatabaseHelper, Request, Message
 import time, threading
 from datetime import datetime, date
 import re
@@ -204,6 +204,28 @@ class Menu(object):
         n_rows_printed += self.print_empty_space(columns, show = show)
         return n_rows_printed
 
+    def display_message_instance(self, columns, message, selected, show = True):
+        n_rows_printed = 0
+        title = message.sender_id + " "
+        if message.sender_id == self.user.user_id:
+            title = "You "
+        if not message.group_id and not message.recipient_id:
+            title += "to [DELETED]"
+
+        if message.group_id:
+            title += " @ " + message.group_id
+        elif message.recipient_id:
+            if message.recipient_id == self.user.user_id:
+                title += " to You"
+            else:
+                title += " to " + message.recipient_id
+
+        text = message.message + ('\n' + message.date.strftime("%Y-%m-%d %H:%M"))
+        n_rows_printed += self.print_multiline(columns, title, text, selected, selected, False, show = show)
+        n_rows_printed += self.print_empty_space(columns, show = show)
+        return n_rows_printed
+
+
     def display_all_options(self, columns, show = True):
         n_rows_printed = 0
         for i, option in enumerate(self.options):
@@ -303,6 +325,8 @@ class Menu(object):
                 n_rows_printed += self.display_user_instance(columns, option, selected, show = show)
             elif (isinstance(option, Request)):
                 n_rows_printed += self.display_request_instance(columns, option, selected, show = show)
+            elif (isinstance(option, Message)):
+                n_rows_printed += self.display_message_instance(columns, option, selected, show = show)
 
         self.last_window = (range_start, range_end)
         return n_rows_printed
@@ -318,6 +342,8 @@ class Menu(object):
                 option_heights.append(self.display_user_instance(columns, option, selected, show = False))
             elif (isinstance(option, Request)):
                 option_heights.append(self.display_request_instance(columns, option, selected, show = False))
+            elif (isinstance(option, Message)):
+                option_heights.append(self.display_message_instance(columns, option, selected, show = False))
         return option_heights
 
 
@@ -339,14 +365,7 @@ class Menu(object):
 
         # get the number of rows occupied by each option
         option_heights = []
-        for i, option in enumerate(self.options):
-            selected = i == self.current_option
-            if (isinstance(option, str)):
-                option_heights.append(self.display_string_option(columns, option, selected, show = False))
-            elif (isinstance(option, User)):
-                option_heights.append(self.display_user_instance(columns, option, selected, show = False))
-            elif (isinstance(option, Request)):
-                option_heights.append(self.display_request_instance(columns, option, selected, show = False))
+        option_heights = self.get_option_heights(columns, 0, len(self.options))
 
         range_start = 0
         range_end = 0
@@ -415,6 +434,12 @@ class Menu(object):
             if key == '\x1b[A' or key == '\x1b[D':
                 #self.current_option = (self.current_option - 1) % self.no_options
                 self.current_option = max(0, self.current_option - 1)
+                break;
+            elif key == '\x05':
+                if (self.options):
+                    self.current_option = max(0, len(self.options) - 1)
+                else:
+                    self.current_option = 0
                 break;
             elif key == '\x1b[B' or key == '\x1b[C' or key == '\t':
                 #self.current_option = (self.current_option + 1) % self.no_options
@@ -505,36 +530,40 @@ class HomeMenu(Menu):
         elif (self.current_option == 4):
             db_helper = DatabaseHelper.get_instance()
             db_result = db_helper.drop_user(self.user.user_id)
+            if not db_result:
+                self.add_notification("Could not delete your account. Please try again later.")
+                return
             self.user.log_out()
             self.dismissed = True
 
 class AnalyticsMenu(Menu):
-	def __init__(self, user):
-		super(AnalyticsMenu, self).__init__(user, "Analytics",\
-											["3Degrees",\
-											 "Top k users for past x days"],\
-											 True)
-		self.db_helper = DatabaseHelper.get_instance()
+    def __init__(self, user):
+            super(AnalyticsMenu, self).__init__(user, "Analytics",\
+                                                     ["3Degrees",\
+                                                     "Top k users for past x days"],\
+                                                     True)
+            self.db_helper = DatabaseHelper.get_instance()
 
-	def process_selection(self):
-		if self.current_option == 0: #3degrees
-			res = SearchFor3DegreesForm().get_responses()
-			if res == None:
-				return
-			user1, user2 = res
-			db_helper = DatabaseHelper.get_instance()
-			db_result = db_helper.three_degrees(user1, user2)
-			
-			self.add_notification("Result: "+str(db_result))
-		elif self.current_option == 1: #Top-k
-			res = SearchForTopKForm().get_responses()
-			if res == None:
-				return
-			user1, user2 = res
-			db_helper = DatabaseHelper.get_instance()
-			db_result = db_helper.topUsers(user1, user2)
-			self.add_notification("Result: "+str(db_result))
-			return
+    def process_selection(self):
+        if self.current_option == 0: #3degrees
+            res = SearchFor3DegreesForm().get_responses()
+            if res == None:
+                return
+            user1, user2 = res
+            db_helper = DatabaseHelper.get_instance()
+            db_result = db_helper.three_degrees(user1, user2)
+            self.add_notification("Result: "+str(db_result))
+            return
+        elif self.current_option == 1: #Top-k
+            res = SearchForTopKForm().get_responses()
+            if res == None:
+                return
+            user1, user2 = res
+            db_helper = DatabaseHelper.get_instance()
+            db_result = db_helper.topUsers(user1, user2)
+            UserSearchResultsMenu(db_result).start()
+			#self.add_notification("Result: "+str(db_result))
+            return
 
 class FriendsMenu(Menu):
     def __init__(self, user):
@@ -637,26 +666,34 @@ class MessagingMenu(Menu):
                 self.add_notification("Success! Your message to " + recipient.f_name + " " + recipient.l_name + " has been sent.")
             return
         elif self.current_option == 1: # Message a group
-			res = MessageGroupForm().get_responses()
-			if res == None:
-				return
-			groupID, message = res
-			db_helper = DatabaseHelper.get_instance()
-			db_result = db_helper.send_group_message_to(self.user.user_id, groupID, message)
+            res = MessageGroupForm(self.user).get_responses()
+            if res == None:
+                return
+            groupID, message = res
+            db_helper = DatabaseHelper.get_instance()
+            db_result = db_helper.send_group_message_to(self.user.user_id, groupID, message)
 			#db_result = db_helper.display_new_messages(user1)
 			#db_result = db_helper.drop_user(user1)
-			self.add_notification("Result: "+str(db_result))
-			return
+			#self.add_notification("Result: "+str(db_result))
+            if not db_result:
+                self.add_error("Could not send message to " + groupID+ ".")
+            else:
+                self.add_notification("Success! Your message to " + groupID + " has been sent.")
+            return
         elif self.current_option == 2: # Display New Messages
-			db_helper = DatabaseHelper.get_instance()
-			db_result = db_helper.display_new_messages(self.user.user_id)
-			self.add_notification("Result: "+str(db_result))
-			return
+            db_helper = DatabaseHelper.get_instance()
+            db_result = db_helper.display_new_messages(self.user.user_id)
+            messages = self.user.get_new_messages()
+            DisplayMessagesMenu(self.user, messages).start()
+			#self.add_notification("Result: "+str(db_result))
+            return
         elif self.current_option == 3: # Display All Messages
-			db_helper = DatabaseHelper.get_instance()
-			db_result = db_helper.display_messages(self.user.user_id)
-			self.add_notification("Result: "+str(db_result))
-			return
+            db_helper = DatabaseHelper.get_instance()
+			#db_result = db_helper.display_messages(self.user.user_id)
+            messages = self.user.get_messages()
+            #self.add_notification("Result: "+ str(len(db_result)))
+            DisplayMessagesMenu(self.user, messages).start()
+            return
 
 class SelectRecipientMenu(Menu):
     def __init__(self, friends):
@@ -826,7 +863,8 @@ class DisplayProfileMenu(Menu):
         if friends:
             opt_title = user.f_name + "'s Friends"
         else:
-            opt_title = full_name + " HAS NO FRIENDS!"
+            friends = []
+            opt_title = user.f_name + " has no friends!"
         super(DisplayProfileMenu, self).__init__(user, title, friends, options_title = opt_title)
 
 
@@ -843,6 +881,19 @@ class DisplayProfileMenu(Menu):
     def process_selection(self):
         if self.current_option < len(self.options):
             DisplayProfileMenu(self.options[self.current_option]).start()
+
+class DisplayMessagesMenu(Menu):
+    def __init__(self, user, messages):
+        if not messages:
+            name = "NO MESSAGES"
+            messages = []
+        else:
+            name = "YOUR MESSAGES"
+        super(DisplayMessagesMenu, self).__init__(user, name, messages)
+
+    def process_selection(self):
+        pass
+
 
 
 
@@ -1294,7 +1345,7 @@ class SendFriendRequestForm(Form):
         default = DatabaseHelper.get_instance().get_default_value("pendingfriends", "message")
         super(SendFriendRequestForm, self).__init__("Send A Friend Request To " + first_name,
                                                    ["Enter a message"], "Send Request",
-                                                   multiline_fields = [0], defaults = {0:default})
+                                                   multiline_fields = [0], defaults = {0:"Hi! We should be friends!"})
 
 
     def validate(self):
@@ -1403,12 +1454,28 @@ class SearchForTopKForm(Form):
         return True
 
 class MessageGroupForm(Form):
-    def __init__(self):
-        super(MessageGroupForm, self).__init__("MESSAGE GROUP FORM", ["Group ID", "Message"], "Send Message")
+    def __init__(self, user):
+        super(MessageGroupForm, self).__init__("MESSAGE GROUP FORM", ["Group ID", "Message"], "Send Message", multiline_fields = [1])
+        self.associated_table = "messages"
+        self.attribute_field_map = {"message": 1, "togroupid": 0}
+        self.db_helper = DatabaseHelper.get_instance()
+        self.user = user
 
     def validate(self):
         for i,field in enumerate(self.fields):
             if self.responses[i] == '':
                 self.add_error("'" + field + "' cannot be empty.")
                 return False
+
+        if not self.validate_against_schema(self.associated_table, self.attribute_field_map):
+            return False
+
+        if not self.db_helper.check_group_id_exists(self.responses[0]):
+            self.add_error("The group with id '" + self.responses[0] + "' does not exist.")
+            return False
+
+        if not self.db_helper.check_is_group_member_or_manager(self.user.user_id, self.responses[0]):
+            self.add_error("You are not a member of this group.")
+            return False
+
         return True
